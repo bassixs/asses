@@ -7,8 +7,6 @@ from collections.abc import Awaitable, Callable
 from typing import Any
 
 from aiogram import BaseMiddleware, Bot, Dispatcher
-from aiogram.client.default import DefaultBotProperties
-from aiogram.enums import ParseMode
 from aiogram.types import TelegramObject
 
 from bot.config import settings
@@ -41,10 +39,7 @@ async def main() -> None:
     setup_logging()
     await init_db()
 
-    bot = Bot(
-        token=settings.bot_token,
-        default=DefaultBotProperties(parse_mode=ParseMode.HTML),
-    )
+    bot = Bot(token=settings.bot_token)
     dispatcher = Dispatcher()
     dispatcher.update.middleware(DbSessionMiddleware())
     dispatcher.include_router(common.router)
@@ -61,4 +56,3 @@ async def main() -> None:
 
 if __name__ == "__main__":
     asyncio.run(main())
-
