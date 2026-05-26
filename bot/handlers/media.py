@@ -18,6 +18,7 @@ logger = logging.getLogger(__name__)
 router = Router()
 
 _SAFE_FILE_NAME_RE = re.compile(r"[^A-Za-z0-9_.-]+")
+SUPPORTED_AUDIO_DOCUMENT_EXTENSIONS = {".ogg", ".oga", ".opus", ".mp3", ".pcm", ".lpcm", ".raw"}
 
 
 def _extract_file_meta(message: Message) -> tuple[str, str | None, str]:
@@ -49,6 +50,16 @@ async def handle_interview_file(message: Message, bot: Bot, session: AsyncSessio
         return
 
     file_id, file_unique_id, file_type = _extract_file_meta(message)
+    if message.document:
+        file_name = message.document.file_name or ""
+        suffix = Path(file_name).suffix.lower()
+        if suffix not in SUPPORTED_AUDIO_DOCUMENT_EXTENSIONS:
+            await message.answer(
+                "Этот документ не похож на поддерживаемую аудиозапись. "
+                "Для блокнота наблюдателя отправьте .xlsx, для аудио — .ogg/.opus/.mp3/.pcm."
+            )
+            return
+
     await message.answer("Файл получен. Скачиваю и отправляю на расшифровку...")
     logger.info("Received %s from user_id=%s chat_id=%s", file_type, message.from_user.id, message.chat.id)
 

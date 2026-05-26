@@ -205,5 +205,24 @@ def _extract_transcript(operation: dict[str, Any]) -> str:
             continue
         text = str(alternatives[0].get("text", "")).strip()
         if text:
-            parts.append(text)
+            timestamp = _format_chunk_timestamp(chunk)
+            parts.append(f"[{timestamp}] {text}" if timestamp else text)
     return "\n".join(parts).strip()
+
+
+def _format_chunk_timestamp(chunk: dict[str, Any]) -> str | None:
+    start = chunk.get("startTime") or chunk.get("start_time")
+    if not start:
+        return None
+    seconds = _duration_to_seconds(str(start))
+    minutes = int(seconds // 60)
+    rest = int(seconds % 60)
+    return f"{minutes:02d}:{rest:02d}"
+
+
+def _duration_to_seconds(value: str) -> float:
+    value = value.strip().lower().removesuffix("s")
+    try:
+        return float(value)
+    except ValueError:
+        return 0.0

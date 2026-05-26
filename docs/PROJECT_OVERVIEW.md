@@ -29,7 +29,8 @@ https://github.com/bassixs/asses.git
 - Добавлена обработка:
   - voice messages;
   - audio files;
-  - documents.
+  - audio documents;
+  - Excel-блокнотов наблюдателя `.xlsx`.
 - Добавлена интеграция с Yandex SpeechKit:
   - короткие Ogg Opus / raw LPCM файлы идут через sync API v1;
   - длинные интервью и MP3 идут через Object Storage + async SpeechKit API v2.
@@ -41,6 +42,13 @@ https://github.com/bassixs/asses.git
   - SQLAlchemy 2.0 async;
   - SQLite на старте;
   - Alembic migration.
+- Добавлен сценарий ассессмент-центра:
+  - загрузка Excel-блокнота наблюдателя;
+  - извлечение компетенций и поведенческих индикаторов из колонок B/C;
+  - оценка индикаторов по транскрипту через YandexGPT;
+  - заполнение колонок D/E/F;
+  - расчет уровня компетенции без учета `НЗ`;
+  - отправка заполненного `.xlsx` обратно HR-у.
 - Добавлена Yandex Cloud инфраструктура:
   - service account `hr-assessment-bot`;
   - роли для SpeechKit, YandexGPT и Object Storage;
@@ -81,14 +89,17 @@ bot/
     common.py             # /start, /criteria
     media.py              # Загрузка и расшифровка файлов
     assessment.py         # /assess, /my_assessments, форматирование отчета
+    notebook.py           # /fill_notebook и Excel-блокноты наблюдателя
   models/
     record.py             # InterviewRecord
     assessment.py         # AssessmentResult
+    notebook.py           # ObserverNotebook, NotebookFillResult
   services/
     speechkit.py          # Sync/async SpeechKit transcription
     yandex_gpt.py         # YandexGPT JSON completion
     assessment.py         # analyze_transcript() и system prompt
     object_storage.py     # Upload в Yandex Object Storage
+    observer_notebook.py  # Парсинг, анализ и заполнение Excel-блокнота
 alembic/
   versions/
     20260524_0001_initial.py
@@ -134,6 +145,47 @@ data/uploads/
 11. JSON валидируется Pydantic-моделью `AssessmentReport`.
 12. Результат сохраняется в таблицу `assessment_results`.
 13. Бот отправляет HR-у отчет.
+
+## Как работает сценарий ассессмент-центра
+
+1. HR отправляет аудиозапись упражнения.
+2. Бот расшифровывает запись и возвращает `ID записи`.
+3. HR отправляет Excel-блокнот наблюдателя `.xlsx`.
+4. Бот сохраняет блокнот, извлекает индикаторы из колонки C и возвращает `ID блокнота`.
+5. HR запускает:
+
+```text
+/fill_notebook <ID записи> <ID блокнота>
+```
+
+6. Бот отправляет в YandexGPT транскрипт упражнения и список поведенческих индикаторов.
+7. YandexGPT определяет роли и оценивает только реплики оцениваемого участника.
+8. Для каждого индикатора возвращается `+`, `-` или `НЗ`.
+9. Бот заполняет блокнот:
+   - колонка D — проявление индикатора;
+   - колонка E — цитата и таймкод для `+`, причина для `НЗ`;
+   - колонка F — уровень компетенции.
+10. Бот отправляет заполненный `.xlsx` обратно в Telegram.
+
+Формула уровня компетенции:
+
+```text
+% проявления = количество "+" / количество наблюдаемых индикаторов * 100
+```
+
+`НЗ` исключается из расчета.
+
+Шкала:
+
+```text
+90-100% -> 3
+80-90%  -> 2.5
+60-80%  -> 2
+40-60%  -> 1.5
+20-40%  -> 1
+5-20%   -> 0.5
+0-5%    -> 0
+```
 
 ## Формат оценки
 
@@ -285,6 +337,29 @@ data/app.db
 - summary;
 - дату создания.
 
+### observer_notebooks
+
+Хранит:
+
+- id блокнота;
+- chat_id;
+- user_id HR-а;
+- Telegram file_id;
+- имя файла;
+- путь к локальному `.xlsx`;
+- дату загрузки.
+
+### notebook_fill_results
+
+Хранит:
+
+- id результата;
+- record_id;
+- notebook_id;
+- путь к заполненному `.xlsx`;
+- JSON с оценками индикаторов и уровнями компетенций;
+- дату создания.
+
 Миграции:
 
 ```bash
@@ -374,6 +449,7 @@ systemctl restart asses-bot
 - Бот успешно стартует на сервере.
 - Polling работает.
 - `/start` отвечает.
+- Excel-сервис проверен на тестовом блокноте: индикаторы извлекаются, колонки D/E/F заполняются, уровень считается корректно.
 - YandexGPT smoke-test работает.
 - Object Storage upload smoke-test был проверен локально.
 - Alembic migration применена на сервере.
@@ -421,6 +497,7 @@ mkdir -p /opt/asses/data/uploads
 - Нет PDF-отчетов.
 - Нет отдельной админки критериев.
 - Нет очереди фоновых задач: длинное распознавание выполняется в процессе бота.
+- Формирование индивидуального отчета и ИПР пока заложено как следующий этап, но не реализовано как отдельные DOCX/PDF-файлы.
 
 ## Что нужно от заказчика для следующего этапа
 
@@ -453,4 +530,3 @@ mkdir -p /opt/asses/data/uploads
 - Хранение оригиналов файлов только в Object Storage без локального дубля.
 - Очистка старых файлов по расписанию.
 - Мониторинг и алерты.
-
