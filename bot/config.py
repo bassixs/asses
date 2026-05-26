@@ -54,6 +54,10 @@ class Settings(BaseSettings):
         default=7200,
         validation_alias="SPEECHKIT_ASYNC_TIMEOUT_SECONDS",
     )
+    admin_username: str = Field(default="admin", validation_alias="ADMIN_USERNAME")
+    admin_password: str | None = Field(default=None, validation_alias="ADMIN_PASSWORD")
+    web_host: str = Field(default="127.0.0.1", validation_alias="WEB_HOST")
+    web_port: int = Field(default=8080, validation_alias="WEB_PORT")
     competencies: list[str] = Field(default_factory=lambda: DEFAULT_COMPETENCIES.copy())
 
     model_config = SettingsConfigDict(

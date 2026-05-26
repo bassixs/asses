@@ -395,6 +395,20 @@ Systemd service:
 asses-bot
 ```
 
+Админ-панель запускается как отдельное ASGI-приложение:
+
+```text
+bot.admin:app
+```
+
+Рекомендуемый bind:
+
+```text
+127.0.0.1:8080
+```
+
+Так панель доступна только через SSH-туннель или reverse proxy с авторизацией.
+
 ## Команды эксплуатации
 
 Статус бота:
@@ -442,6 +456,26 @@ git pull
 pip install -r requirements.txt
 python -m alembic upgrade head
 systemctl restart asses-bot
+```
+
+Запуск админки вручную:
+
+```bash
+cd /opt/asses
+. .venv/bin/activate
+uvicorn bot.admin:app --host 127.0.0.1 --port 8080
+```
+
+SSH-туннель для доступа с локального компьютера:
+
+```bash
+ssh -L 8080:127.0.0.1:8080 root@5.42.107.42
+```
+
+После этого открыть:
+
+```text
+http://127.0.0.1:8080
 ```
 
 ## Что уже проверено
@@ -521,6 +555,7 @@ mkdir -p /opt/asses/data/uploads
 - Автоматическая конвертация WAV/M4A/MP4 через ffmpeg.
 - PDF-отчеты.
 - Web dashboard для HR.
+- Расширенная админка с фильтрами, скачиванием файлов и ролями доступа.
 - PostgreSQL вместо SQLite.
 - Очередь задач через Redis/RQ/Celery/Arq.
 - Webhook вместо polling.
