@@ -11,7 +11,7 @@ from aiogram.types import TelegramObject
 
 from bot.config import settings
 from bot.database import async_session_maker, init_db
-from bot.handlers import assessment, common, media, notebook
+from bot.handlers import admin, assessment, common, media, notebook
 from bot.keyboards import main_menu_keyboard
 
 
@@ -42,6 +42,7 @@ async def main() -> None:
     bot = Bot(token=settings.bot_token)
     dispatcher = Dispatcher()
     dispatcher.update.middleware(DbSessionMiddleware())
+    dispatcher.include_router(admin.router)
     dispatcher.include_router(common.router)
     dispatcher.include_router(assessment.router)
     dispatcher.include_router(notebook.router)
