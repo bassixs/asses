@@ -6,10 +6,11 @@ from aiogram.types import InlineKeyboardButton, InlineKeyboardMarkup, KeyboardBu
 def main_menu_keyboard() -> ReplyKeyboardMarkup:
     return ReplyKeyboardMarkup(
         keyboard=[
-            [KeyboardButton(text="/criteria"), KeyboardButton(text="/my_assessments")],
+            [KeyboardButton(text="/centers"), KeyboardButton(text="/criteria")],
+            [KeyboardButton(text="/my_assessments"), KeyboardButton(text="/admin")],
         ],
         resize_keyboard=True,
-        input_field_placeholder="Отправьте запись интервью или команду",
+        input_field_placeholder="Отправьте аудио, Excel-блокнот или команду",
     )
 
 
@@ -27,4 +28,3 @@ def assessment_actions_keyboard(record_id: int) -> InlineKeyboardMarkup:
             [InlineKeyboardButton(text="Повторить оценку", callback_data=f"assess:{record_id}")],
         ]
     )
-
