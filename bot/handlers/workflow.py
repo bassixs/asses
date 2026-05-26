@@ -24,7 +24,12 @@ from bot.services.observer_notebook import (
     extract_notebook_indicators,
     fill_observer_notebook,
 )
-from bot.services.reports import build_development_plan_text, build_participant_report_text, save_text_report
+from bot.services.reports import (
+    build_development_plan_text,
+    build_participant_report_text,
+    save_development_plan_docx,
+    save_participant_report_docx,
+)
 
 router = Router()
 
@@ -274,12 +279,24 @@ async def cmd_generate_report(message: Message, session: AsyncSession) -> None:
     if not fills:
         await message.answer("Нет обработанных упражнений для отчета.")
         return
-    text, result_json = build_participant_report_text(
+    _, result_json = build_participant_report_text(
         participant_name=participant.full_name,
         exercise_results=[item.result_json for item in fills],
     )
-    output_path = settings.download_dir.parent / "reports" / f"participant_{participant.id}_report.txt"
-    save_text_report(output_path, text)
+    exercises = list(
+        await session.scalars(
+            select(Exercise).where(Exercise.participant_id == participant.id).order_by(Exercise.id)
+        )
+    )
+    center = await session.get(AssessmentCenter, participant.center_id)
+    output_path = settings.download_dir.parent / "reports" / f"participant_{participant.id}_report.docx"
+    save_participant_report_docx(
+        path=output_path,
+        participant_name=participant.full_name,
+        center_name=center.name if center else None,
+        exercise_names=[item.name for item in exercises],
+        report_json=result_json,
+    )
     report = ParticipantReport(
         participant_id=participant.id,
         chat_id=message.chat.id,
@@ -313,12 +330,18 @@ async def cmd_generate_ipr(message: Message, session: AsyncSession) -> None:
     if report is None:
         await message.answer("Сначала сформируйте отчет: /generate_report <participant_id>")
         return
-    text, result_json = build_development_plan_text(
+    _, result_json = build_development_plan_text(
         participant_name=participant.full_name,
         report_json=report.result_json,
     )
-    output_path = settings.download_dir.parent / "reports" / f"participant_{participant.id}_ipr.txt"
-    save_text_report(output_path, text)
+    center = await session.get(AssessmentCenter, participant.center_id)
+    output_path = settings.download_dir.parent / "reports" / f"participant_{participant.id}_ipr.docx"
+    save_development_plan_docx(
+        path=output_path,
+        participant_name=participant.full_name,
+        center_name=center.name if center else None,
+        plan_json=result_json,
+    )
     plan = DevelopmentPlan(
         participant_id=participant.id,
         chat_id=message.chat.id,
