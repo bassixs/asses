@@ -106,6 +106,7 @@ alembic/
 docs/
   YANDEX_CLOUD_SETUP.md
   PROJECT_OVERVIEW.md
+  BOT_USAGE_SIMPLE.md
 scripts/
   setup_yandex_cloud.ps1
 .env.example

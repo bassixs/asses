@@ -1,8 +1,20 @@
 from __future__ import annotations
 
 from bot.models.base import Base
+from bot.models.center import AssessmentCenter, DevelopmentPlan, Exercise, Participant, ParticipantReport
 from bot.models.assessment import AssessmentResult
 from bot.models.notebook import NotebookFillResult, ObserverNotebook
 from bot.models.record import InterviewRecord
 
-__all__ = ["AssessmentResult", "Base", "InterviewRecord", "NotebookFillResult", "ObserverNotebook"]
+__all__ = [
+    "AssessmentCenter",
+    "AssessmentResult",
+    "Base",
+    "DevelopmentPlan",
+    "Exercise",
+    "InterviewRecord",
+    "NotebookFillResult",
+    "ObserverNotebook",
+    "Participant",
+    "ParticipantReport",
+]

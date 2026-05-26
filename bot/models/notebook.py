@@ -13,6 +13,11 @@ class ObserverNotebook(Base):
     __tablename__ = "observer_notebooks"
 
     id: Mapped[int] = mapped_column(primary_key=True, autoincrement=True)
+    exercise_id: Mapped[int | None] = mapped_column(
+        ForeignKey("exercises.id", ondelete="SET NULL"),
+        index=True,
+        nullable=True,
+    )
     chat_id: Mapped[int] = mapped_column(BigInteger, index=True)
     user_id: Mapped[int] = mapped_column(BigInteger, index=True)
     file_id: Mapped[str] = mapped_column(String(512))
@@ -34,6 +39,11 @@ class NotebookFillResult(Base):
     __tablename__ = "notebook_fill_results"
 
     id: Mapped[int] = mapped_column(primary_key=True, autoincrement=True)
+    exercise_id: Mapped[int | None] = mapped_column(
+        ForeignKey("exercises.id", ondelete="SET NULL"),
+        index=True,
+        nullable=True,
+    )
     record_id: Mapped[int] = mapped_column(
         ForeignKey("interview_records.id", ondelete="CASCADE"),
         index=True,

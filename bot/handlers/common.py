@@ -19,7 +19,9 @@ async def cmd_start(message: Message) -> None:
         "После расшифровки напишите /assess <ID> или нажмите кнопку оценки.\n"
         "Для ассессмент-центра отправьте Excel-блокнот наблюдателя, затем используйте "
         "/fill_notebook <ID записи> <ID блокнота>.\n"
-        "Команды: /criteria, /my_assessments"
+        "Полный workflow: /create_center, /add_participant, /add_exercise, "
+        "/attach_record, /attach_notebook, /process_exercise, /generate_report, /generate_ipr.\n"
+        "Команды: /criteria, /my_assessments, /admin"
     )
     await message.answer(text, reply_markup=main_menu_keyboard())
 

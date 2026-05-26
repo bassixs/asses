@@ -10,7 +10,17 @@ from sqlalchemy import delete, desc, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from bot.config import settings
-from bot.models import AssessmentResult, InterviewRecord, NotebookFillResult, ObserverNotebook
+from bot.models import (
+    AssessmentCenter,
+    AssessmentResult,
+    DevelopmentPlan,
+    Exercise,
+    InterviewRecord,
+    NotebookFillResult,
+    ObserverNotebook,
+    Participant,
+    ParticipantReport,
+)
 
 router = Router()
 
@@ -123,6 +133,7 @@ async def _admin_panel_text(session: AsyncSession) -> str:
         f"Блокноты наблюдателя: {counts['notebooks']}\n"
         f"Оценки компетенций: {counts['assessments']}\n"
         f"Заполненные блокноты: {counts['fills']}\n"
+        f"Центры/участники/упражнения: {counts['centers']}/{counts['participants']}/{counts['exercises']}\n"
         f"Файлов в uploads: {counts['upload_files']}\n"
         f"Файлов в reports: {counts['report_files']}"
     )
@@ -190,6 +201,9 @@ async def _counts(session: AsyncSession) -> dict[str, int]:
         "notebooks": await session.scalar(select(func.count(ObserverNotebook.id))) or 0,
         "assessments": await session.scalar(select(func.count(AssessmentResult.id))) or 0,
         "fills": await session.scalar(select(func.count(NotebookFillResult.id))) or 0,
+        "centers": await session.scalar(select(func.count(AssessmentCenter.id))) or 0,
+        "participants": await session.scalar(select(func.count(Participant.id))) or 0,
+        "exercises": await session.scalar(select(func.count(Exercise.id))) or 0,
         "upload_files": _count_files(settings.download_dir),
         "report_files": _count_files(settings.download_dir.parent / "reports"),
     }
@@ -238,8 +252,13 @@ async def _delete_all(session: AsyncSession) -> None:
 
     await session.execute(delete(NotebookFillResult))
     await session.execute(delete(AssessmentResult))
+    await session.execute(delete(DevelopmentPlan))
+    await session.execute(delete(ParticipantReport))
     await session.execute(delete(ObserverNotebook))
     await session.execute(delete(InterviewRecord))
+    await session.execute(delete(Exercise))
+    await session.execute(delete(Participant))
+    await session.execute(delete(AssessmentCenter))
     _delete_runtime_files(settings.download_dir)
     _delete_runtime_files(settings.download_dir.parent / "reports")
 

@@ -149,6 +149,15 @@ def fill_observer_notebook(
         "participant_summary": report.participant_summary,
         "indicator_count": len(indicators),
         "levels": levels,
+        "indicators": [
+            {
+                "indicator_id": item.indicator_id,
+                "competence": item.competence,
+                "indicator": item.indicator,
+                "row": item.row,
+            }
+            for item in indicators
+        ],
         "results": [item.model_dump() for item in report.results],
     }
 

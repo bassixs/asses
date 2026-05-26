@@ -150,6 +150,7 @@ async def cmd_fill_notebook(message: Message, session: AsyncSession) -> None:
         return
 
     fill_result = NotebookFillResult(
+        exercise_id=record.exercise_id if record.exercise_id == notebook.exercise_id else None,
         record_id=record.id,
         notebook_id=notebook.id,
         chat_id=message.chat.id,
