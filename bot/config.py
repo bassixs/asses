@@ -39,6 +39,7 @@ class Settings(BaseSettings):
     database_url: str = Field(default="sqlite+aiosqlite:///./data/app.db", validation_alias="DATABASE_URL")
     log_level: str = Field(default="INFO", validation_alias="LOG_LEVEL")
     download_dir: Path = Field(default=Path("./data/uploads"), validation_alias="DOWNLOAD_DIR")
+    telegram_download_max_bytes: int = Field(default=20_000_000, validation_alias="TELEGRAM_DOWNLOAD_MAX_BYTES")
 
     speechkit_stt_url: str = "https://stt.api.cloud.yandex.net/speech/v1/stt:recognize"
     speechkit_async_stt_url: str = "https://transcribe.api.cloud.yandex.net/speech/stt/v2/longRunningRecognize"
