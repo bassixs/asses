@@ -53,14 +53,18 @@ def _is_telegram_file_too_big_error(exc: TelegramBadRequest) -> bool:
 
 
 async def _download_telegram_file(bot: Bot, file_id: str, file_type: str, file_name: str | None = None) -> Path:
-    tg_file = await bot.get_file(file_id)
+    tg_file = await bot.get_file(file_id, request_timeout=settings.telegram_file_request_timeout_seconds)
     if tg_file.file_path is None:
         raise RuntimeError("Telegram did not return file_path")
     suffix = Path(file_name or "").suffix or Path(tg_file.file_path or "").suffix or ".bin"
     settings.download_dir.mkdir(parents=True, exist_ok=True)
     safe_file_id = _SAFE_FILE_NAME_RE.sub("_", file_id)
     destination = settings.download_dir / f"{file_type}_{safe_file_id}{suffix}"
-    await bot.download_file(tg_file.file_path, destination=destination)
+    await bot.download_file(
+        tg_file.file_path,
+        destination=destination,
+        timeout=settings.telegram_file_download_timeout_seconds,
+    )
     return destination
 
 

@@ -74,6 +74,8 @@ docker logs --tail 80 telegram-bot-api
 TELEGRAM_API_BASE_URL=http://127.0.0.1:8081
 TELEGRAM_API_IS_LOCAL=true
 TELEGRAM_DOWNLOAD_MAX_BYTES=2000000000
+TELEGRAM_FILE_REQUEST_TIMEOUT_SECONDS=900
+TELEGRAM_FILE_DOWNLOAD_TIMEOUT_SECONDS=900
 ```
 
 Перезапустите бота:
@@ -88,4 +90,3 @@ journalctl -u asses-bot -n 80 --no-pager
 После этого пользователь может отправлять большие аудиофайлы в Telegram, бот
 скачает их через локальный Bot API Server и дальше отправит в SpeechKit async
 через Object Storage.
-
