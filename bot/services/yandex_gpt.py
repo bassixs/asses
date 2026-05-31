@@ -15,6 +15,47 @@ class YandexGPTError(RuntimeError):
     pass
 
 
+def _prepare_yandex_json_schema(schema: dict[str, Any]) -> dict[str, Any]:
+    """Normalize Pydantic JSON Schema for YandexGPT structured output.
+
+    YandexGPT rejects schemas where object properties are not listed in
+    `required`, even if those fields have defaults in Pydantic models.
+    Nullable fields remain nullable through `anyOf`, but they must still be
+    present in the generated JSON object.
+    """
+    prepared = json.loads(json.dumps(schema))
+    _require_all_object_properties(prepared)
+    return prepared
+
+
+def _require_all_object_properties(node: Any) -> None:
+    if isinstance(node, dict):
+        properties = node.get("properties")
+        if isinstance(properties, dict):
+            node["required"] = list(properties.keys())
+            for child in properties.values():
+                _require_all_object_properties(child)
+
+        for key in ("$defs", "definitions"):
+            definitions = node.get(key)
+            if isinstance(definitions, dict):
+                for child in definitions.values():
+                    _require_all_object_properties(child)
+
+        items = node.get("items")
+        if items is not None:
+            _require_all_object_properties(items)
+
+        for key in ("anyOf", "oneOf", "allOf"):
+            variants = node.get(key)
+            if isinstance(variants, list):
+                for child in variants:
+                    _require_all_object_properties(child)
+    elif isinstance(node, list):
+        for child in node:
+            _require_all_object_properties(child)
+
+
 async def complete_json(
     *,
     system_prompt: str,
@@ -42,7 +83,7 @@ async def complete_json(
         ],
     }
     if json_schema:
-        body["json_schema"] = {"schema": json_schema}
+        body["json_schema"] = {"schema": _prepare_yandex_json_schema(json_schema)}
     else:
         body["json_object"] = True
 
