@@ -1,12 +1,14 @@
 from __future__ import annotations
 
+import asyncio
 from html import escape
 import logging
 import re
 from pathlib import Path
 
 from aiogram import Bot, F, Router
-from aiogram.exceptions import TelegramBadRequest
+from aiogram.exceptions import TelegramBadRequest, TelegramNetworkError
+from aiogram.types import File
 from aiogram.types import Message
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -52,19 +54,60 @@ def _is_telegram_file_too_big_error(exc: TelegramBadRequest) -> bool:
     return "file is too big" in str(exc).lower()
 
 
+async def _get_telegram_file_with_retry(bot: Bot, file_id: str) -> File:
+    last_error: TelegramNetworkError | None = None
+    for attempt in range(1, settings.telegram_file_download_attempts + 1):
+        try:
+            return await bot.get_file(file_id, request_timeout=settings.telegram_file_request_timeout_seconds)
+        except TelegramNetworkError as exc:
+            last_error = exc
+            if attempt >= settings.telegram_file_download_attempts:
+                break
+            logger.warning(
+                "Telegram get_file failed, retrying attempt=%s/%s: %s",
+                attempt,
+                settings.telegram_file_download_attempts,
+                exc,
+            )
+            await asyncio.sleep(settings.telegram_file_download_retry_delay_seconds)
+    assert last_error is not None
+    raise last_error
+
+
+async def _download_telegram_path_with_retry(bot: Bot, file_path: str, destination: Path) -> None:
+    last_error: TelegramNetworkError | None = None
+    for attempt in range(1, settings.telegram_file_download_attempts + 1):
+        try:
+            await bot.download_file(
+                file_path,
+                destination=destination,
+                timeout=settings.telegram_file_download_timeout_seconds,
+            )
+            return
+        except TelegramNetworkError as exc:
+            last_error = exc
+            if attempt >= settings.telegram_file_download_attempts:
+                break
+            logger.warning(
+                "Telegram download_file failed, retrying attempt=%s/%s: %s",
+                attempt,
+                settings.telegram_file_download_attempts,
+                exc,
+            )
+            await asyncio.sleep(settings.telegram_file_download_retry_delay_seconds)
+    assert last_error is not None
+    raise last_error
+
+
 async def _download_telegram_file(bot: Bot, file_id: str, file_type: str, file_name: str | None = None) -> Path:
-    tg_file = await bot.get_file(file_id, request_timeout=settings.telegram_file_request_timeout_seconds)
+    tg_file = await _get_telegram_file_with_retry(bot, file_id)
     if tg_file.file_path is None:
         raise RuntimeError("Telegram did not return file_path")
     suffix = Path(file_name or "").suffix or Path(tg_file.file_path or "").suffix or ".bin"
     settings.download_dir.mkdir(parents=True, exist_ok=True)
     safe_file_id = _SAFE_FILE_NAME_RE.sub("_", file_id)
     destination = settings.download_dir / f"{file_type}_{safe_file_id}{suffix}"
-    await bot.download_file(
-        tg_file.file_path,
-        destination=destination,
-        timeout=settings.telegram_file_download_timeout_seconds,
-    )
+    await _download_telegram_path_with_retry(bot, tg_file.file_path, destination)
     return destination
 
 

@@ -48,6 +48,11 @@ class Settings(BaseSettings):
         default=900,
         validation_alias="TELEGRAM_FILE_DOWNLOAD_TIMEOUT_SECONDS",
     )
+    telegram_file_download_attempts: int = Field(default=3, validation_alias="TELEGRAM_FILE_DOWNLOAD_ATTEMPTS")
+    telegram_file_download_retry_delay_seconds: int = Field(
+        default=15,
+        validation_alias="TELEGRAM_FILE_DOWNLOAD_RETRY_DELAY_SECONDS",
+    )
     telegram_api_base_url: str | None = Field(default=None, validation_alias="TELEGRAM_API_BASE_URL")
     telegram_api_is_local: bool = Field(default=False, validation_alias="TELEGRAM_API_IS_LOCAL")
 
