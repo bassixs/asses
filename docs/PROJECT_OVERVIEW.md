@@ -57,6 +57,19 @@ https://github.com/bassixs/asses.git
   - Ubuntu 24.04;
   - systemd service `asses-bot`;
   - бот запущен в polling-режиме.
+- Настроен локальный Telegram Bot API Server для приема больших файлов:
+  - Docker-контейнер `telegram-bot-api`;
+  - локальный endpoint `http://127.0.0.1:8081`;
+  - режим `--local`;
+  - лимит скачивания в боте поднят до 2 GB;
+  - добавлены увеличенные timeout и retry для больших медиа.
+- Проверен полный pipeline на MP3-записи около 61 MB / 25 минут:
+  - файл принят из Telegram;
+  - файл скачан через локальный Telegram Bot API;
+  - файл отправлен в Yandex Object Storage;
+  - SpeechKit async вернул транскрипт;
+  - YandexGPT сформировал оценку;
+  - бот отправил результат в Telegram.
 
 ## Стек
 
@@ -107,6 +120,7 @@ docs/
   YANDEX_CLOUD_SETUP.md
   PROJECT_OVERVIEW.md
   BOT_USAGE_SIMPLE.md
+  LOCAL_TELEGRAM_BOT_API.md
 scripts/
   setup_yandex_cloud.ps1
 .env.example
@@ -118,34 +132,36 @@ alembic.ini
 
 1. HR отправляет боту запись интервью.
 2. `bot/handlers/media.py` получает Telegram file_id.
-3. Бот скачивает файл в локальную папку:
+3. Если включен локальный Telegram Bot API Server, aiogram обращается не к
+   `api.telegram.org`, а к `http://127.0.0.1:8081`.
+4. Бот скачивает файл в локальную папку:
 
 ```text
 data/uploads/
 ```
 
-4. `bot/services/speechkit.py` выбирает способ распознавания:
+5. `bot/services/speechkit.py` выбирает способ распознавания:
    - если файл маленький и формат подходит, используется sync SpeechKit v1;
    - если файл длинный или MP3, файл загружается в Object Storage и запускается async SpeechKit v2.
-5. SpeechKit возвращает транскрипт.
-6. Транскрипт сохраняется в таблицу `interview_records`.
-7. Бот отвечает:
+6. SpeechKit возвращает транскрипт.
+7. Транскрипт сохраняется в таблицу `interview_records`.
+8. Бот отвечает:
 
 ```text
 ✅ Расшифровано. ID: <id>. Напиши /assess <id> для оценки по компетенциям
 ```
 
-8. HR отправляет:
+9. HR отправляет:
 
 ```text
 /assess <id>
 ```
 
-9. `bot/services/assessment.py` формирует system prompt и вызывает YandexGPT.
-10. YandexGPT возвращает JSON по компетенциям.
-11. JSON валидируется Pydantic-моделью `AssessmentReport`.
-12. Результат сохраняется в таблицу `assessment_results`.
-13. Бот отправляет HR-у отчет.
+10. `bot/services/assessment.py` формирует system prompt и вызывает YandexGPT.
+11. YandexGPT возвращает JSON по компетенциям.
+12. JSON валидируется Pydantic-моделью `AssessmentReport`.
+13. Результат сохраняется в таблицу `assessment_results`.
+14. Бот отправляет HR-у отчет.
 
 ## Как работает сценарий ассессмент-центра
 
@@ -295,6 +311,13 @@ YANDEX_STORAGE_PREFIX=interviews
 DATABASE_URL=sqlite+aiosqlite:///./data/app.db
 LOG_LEVEL=INFO
 DOWNLOAD_DIR=./data/uploads
+TELEGRAM_API_BASE_URL=http://127.0.0.1:8081
+TELEGRAM_API_IS_LOCAL=true
+TELEGRAM_DOWNLOAD_MAX_BYTES=2000000000
+TELEGRAM_FILE_REQUEST_TIMEOUT_SECONDS=900
+TELEGRAM_FILE_DOWNLOAD_TIMEOUT_SECONDS=900
+TELEGRAM_FILE_DOWNLOAD_ATTEMPTS=3
+TELEGRAM_FILE_DOWNLOAD_RETRY_DELAY_SECONDS=15
 YANDEX_GPT_MODEL_URI=gpt://<folder_id>/yandexgpt/rc
 SPEECHKIT_SYNC_MAX_BYTES=1000000
 SPEECHKIT_ASYNC_POLL_INTERVAL_SECONDS=10
@@ -396,6 +419,20 @@ Systemd service:
 asses-bot
 ```
 
+Локальный Telegram Bot API Server:
+
+```text
+Docker container: telegram-bot-api
+Endpoint: http://127.0.0.1:8081
+Data dir: /opt/telegram-bot-api/data
+Temp dir: /opt/telegram-bot-api/temp
+Host symlink: /var/lib/telegram-bot-api -> /opt/telegram-bot-api/data
+SSH port: 22222
+```
+
+Рабочий запуск контейнера сейчас использует `--network host`, потому что при Docker NAT
+локальный `telegram-bot-api` зависал на `getMe` и нестабильно ходил в Telegram MTProto.
+
 Админ-панель доступна прямо в Telegram:
 
 ```text
@@ -465,11 +502,32 @@ systemctl restart asses-bot
 /admin
 ```
 
+Логи локального Telegram Bot API:
+
+```bash
+docker logs --tail 120 telegram-bot-api
+```
+
+Проверить локальный Telegram API:
+
+```bash
+cd /opt/asses
+set -a
+. ./.env
+set +a
+curl -sS --max-time 30 "http://127.0.0.1:8081/bot${BOT_TOKEN}/getMe"
+echo
+```
+
 ## Что уже проверено
 
 - Бот успешно стартует на сервере.
 - Polling работает.
 - `/start` отвечает.
+- Локальный Telegram Bot API отвечает на `getMe`.
+- Большой MP3-файл около 61 MB успешно принят из Telegram через локальный Bot API.
+- SpeechKit async успешно расшифровал запись примерно на 25 минут, транскрипт около 33 000 символов.
+- `/assess` успешно сформировал и отправил оценку по расшифрованной записи.
 - Excel-сервис проверен на тестовом блокноте: индикаторы извлекаются, колонки D/E/F заполняются, уровень считается корректно.
 - YandexGPT smoke-test работает.
 - Object Storage upload smoke-test был проверен локально.
@@ -502,6 +560,117 @@ mkdir -p /opt/asses/data/uploads
 
 Иначе SQLite не сможет создать файл `data/app.db`.
 
+### Telegram file is too big
+
+При отправке MP3 около 50-60 MB обычный облачный Telegram Bot API возвращал:
+
+```text
+Bad Request: file is too big
+```
+
+Причина: публичный `api.telegram.org` не отдаёт боту такие файлы через `getFile`.
+
+Решение:
+
+- получены `api_id` и `api_hash` через `https://my.telegram.org/apps`;
+- поднят локальный Telegram Bot API Server;
+- aiogram переключен на `TELEGRAM_API_BASE_URL=http://127.0.0.1:8081`;
+- бот выведен из облачного API через `logOut`;
+- лимит `TELEGRAM_DOWNLOAD_MAX_BYTES` поднят до `2000000000`.
+
+### SSH brute force and port 22222
+
+На сервер массово шли попытки входа по SSH на порт `22`, из-за чего `sshd`
+включал `MaxStartups throttling`, а нормальное подключение зависало на `banner exchange`.
+
+Решение:
+
+- добавлен SSH-порт `22222`;
+- подключение выполняется командой:
+
+```bash
+ssh -p 22222 root@5.42.107.42
+```
+
+В дальнейшем лучше закрыть `22`, оставить доступ по ключам и ограничить SSH по IP.
+
+### Local Telegram Bot API Docker NAT
+
+Первый запуск `telegram-bot-api` в Docker bridge network отвечал на `/`, но `getMe`
+зависал или контейнер был `unhealthy`. Также при неверном `api_hash` локальный API
+возвращал:
+
+```text
+Unauthorized: invalid api-id/api-hash
+```
+
+Что сделали:
+
+- исправили `api_hash`;
+- очистили старые state-директории;
+- перезапустили контейнер в `--network host`;
+- включили `--http-ip-address=127.0.0.1`;
+- проверили `getMe`, он стал отвечать `ok: true`.
+
+### Local Telegram Bot API local file path
+
+После включения `--local` Telegram Bot API возвращал путь вида:
+
+```text
+/var/lib/telegram-bot-api/<bot_token>/music/file_0.mp3
+```
+
+Но Python-бот работает на хосте, а файл физически лежал в:
+
+```text
+/opt/telegram-bot-api/data/
+```
+
+Из-за этого был `FileNotFoundError`.
+
+Решение:
+
+```bash
+mkdir -p /var/lib
+ln -sfn /opt/telegram-bot-api/data /var/lib/telegram-bot-api
+```
+
+### Telegram media timeout and retry
+
+Для больших MP3 локальный Telegram Bot API иногда долго готовит файл, поэтому стандартные
+timeout aiogram давали:
+
+```text
+Request timeout error
+ServerDisconnectedError
+```
+
+Решение:
+
+- добавлены настройки:
+  - `TELEGRAM_FILE_REQUEST_TIMEOUT_SECONDS=900`;
+  - `TELEGRAM_FILE_DOWNLOAD_TIMEOUT_SECONDS=900`;
+  - `TELEGRAM_FILE_DOWNLOAD_ATTEMPTS=3`;
+  - `TELEGRAM_FILE_DOWNLOAD_RETRY_DELAY_SECONDS=15`;
+- добавлены retry для `get_file` и `download_file`.
+
+### YandexGPT JSON Schema required fields
+
+YandexGPT structured output отклонял Pydantic JSON Schema:
+
+```text
+Invalid JSON Schema: all fields must be required, 'recommendations' is optional
+```
+
+Причина: в режиме structured output YandexGPT требует, чтобы все поля объектов были
+перечислены в `required`, даже если в Pydantic у них есть default/default_factory.
+
+Решение:
+
+- в `bot/services/yandex_gpt.py` добавлена нормализация JSON Schema;
+- все поля объектов рекурсивно добавляются в `required`;
+- после этого `/assess` успешно вернул оценку.
+
 ## Ограничения текущей версии
 
 - Для `.wav`, `.m4a`, `.aac`, `.mp4`, `.docx`, `.pdf` пока нет автоматической конвертации/извлечения аудио.
@@ -519,6 +688,9 @@ mkdir -p /opt/asses/data/uploads
 - Нет отдельной админки критериев.
 - Нет очереди фоновых задач: длинное распознавание выполняется в процессе бота.
 - Формирование индивидуального отчета и ИПР реализовано как `.docx`; PDF-экспорт можно добавить через LibreOffice.
+- Локальный Telegram Bot API настроен вручную через Docker run. Лучше вынести его в systemd unit или docker compose.
+- Docker container `telegram-bot-api` может отображаться как `unhealthy`, хотя HTTP API работает. Healthcheck образа нужно заменить или отключить.
+- `api_hash` был засвечен в переписке во время настройки. Для продакшена лучше перевыпустить данные приложения Telegram, если это возможно.
 
 ## Что нужно от заказчика для следующего этапа
 
@@ -537,8 +709,19 @@ mkdir -p /opt/asses/data/uploads
 - полноту списка компетенций;
 - удобство формата отчета для HR.
 
+Также нужны материалы ассессмент-центра под реальные упражнения:
+
+- Excel-блокноты наблюдателя по каждому упражнению;
+- инструкции участников;
+- инструкции наблюдателей;
+- инструкции ведущего;
+- финальные шаблоны индивидуального отчета и ИПР;
+- утвержденная шкала компетенций и список индикаторов.
+
 ## Возможные следующие доработки
 
+- Перевести `telegram-bot-api` в docker compose или systemd unit с документированным запуском.
+- Закрыть SSH-порт `22`, оставить `22222`, настроить вход по SSH-ключу и запретить password-login для root.
 - Автоматическая конвертация WAV/M4A/MP4 через ffmpeg.
 - PDF-экспорт отчетов через LibreOffice.
 - Web dashboard для HR.
@@ -552,3 +735,27 @@ mkdir -p /opt/asses/data/uploads
 - Хранение оригиналов файлов только в Object Storage без локального дубля.
 - Очистка старых файлов по расписанию.
 - Мониторинг и алерты.
+
+## Текущее состояние на 31.05.2026
+
+Рабочий статус:
+
+- бот развернут на Timeweb и запущен через `systemd`;
+- локальный Telegram Bot API Server поднят в Docker через `--network host`;
+- большие MP3 из Telegram проходят через локальный Bot API;
+- проверен файл около 61 MB / 25 минут;
+- SpeechKit async успешно распознал запись;
+- YandexGPT успешно сформировал оценку после исправления JSON Schema;
+- бот отправил результат оценки в Telegram.
+
+Текущий основной технический риск:
+
+- длинные задачи выполняются внутри процесса polling-бота. Если одновременно отправить несколько больших записей, бот может надолго заняться обработкой. Следующий качественный шаг — вынести обработку медиа и SpeechKit/YandexGPT в очередь фоновых задач.
+
+Ближайшие рекомендуемые шаги:
+
+- стабилизировать инфраструктуру: docker compose/systemd для `telegram-bot-api`, SSH-ключи, закрыть порт `22`;
+- добавить ffmpeg-конвертацию популярных аудио/видео форматов;
+- сделать фоновые задачи и статусы обработки в Telegram;
+- протестировать реальные блокноты наблюдателя заказчика;
+- доработать DOCX/PDF отчет и ИПР по финальным шаблонам заказчика.
