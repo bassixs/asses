@@ -40,6 +40,8 @@ class Settings(BaseSettings):
     log_level: str = Field(default="INFO", validation_alias="LOG_LEVEL")
     download_dir: Path = Field(default=Path("./data/uploads"), validation_alias="DOWNLOAD_DIR")
     telegram_download_max_bytes: int = Field(default=20_000_000, validation_alias="TELEGRAM_DOWNLOAD_MAX_BYTES")
+    telegram_api_base_url: str | None = Field(default=None, validation_alias="TELEGRAM_API_BASE_URL")
+    telegram_api_is_local: bool = Field(default=False, validation_alias="TELEGRAM_API_IS_LOCAL")
 
     speechkit_stt_url: str = "https://stt.api.cloud.yandex.net/speech/v1/stt:recognize"
     speechkit_async_stt_url: str = "https://transcribe.api.cloud.yandex.net/speech/stt/v2/longRunningRecognize"

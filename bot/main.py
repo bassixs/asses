@@ -7,6 +7,8 @@ from collections.abc import Awaitable, Callable
 from typing import Any
 
 from aiogram import BaseMiddleware, Bot, Dispatcher
+from aiogram.client.session.aiohttp import AiohttpSession
+from aiogram.client.telegram import TelegramAPIServer
 from aiogram.types import TelegramObject
 
 from bot.config import settings
@@ -39,7 +41,15 @@ async def main() -> None:
     setup_logging()
     await init_db()
 
-    bot = Bot(token=settings.bot_token)
+    session: AiohttpSession | None = None
+    if settings.telegram_api_base_url:
+        api_server = TelegramAPIServer.from_base(
+            settings.telegram_api_base_url,
+            is_local=settings.telegram_api_is_local,
+        )
+        session = AiohttpSession(api=api_server)
+
+    bot = Bot(token=settings.bot_token, session=session)
     dispatcher = Dispatcher()
     dispatcher.update.middleware(DbSessionMiddleware())
     dispatcher.include_router(admin.router)
