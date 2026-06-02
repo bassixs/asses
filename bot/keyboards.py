@@ -18,6 +18,7 @@ def transcript_actions_keyboard(record_id: int) -> InlineKeyboardMarkup:
     return InlineKeyboardMarkup(
         inline_keyboard=[
             [InlineKeyboardButton(text="Оценить компетенции", callback_data=f"assess:{record_id}")],
+            [InlineKeyboardButton(text="Скачать расшифровку", callback_data=f"transcript_file:{record_id}")],
         ]
     )
 

@@ -55,6 +55,10 @@ class Settings(BaseSettings):
     )
     telegram_api_base_url: str | None = Field(default=None, validation_alias="TELEGRAM_API_BASE_URL")
     telegram_api_is_local: bool = Field(default=False, validation_alias="TELEGRAM_API_IS_LOCAL")
+    telegram_drop_pending_updates_on_start: bool = Field(
+        default=False,
+        validation_alias="TELEGRAM_DROP_PENDING_UPDATES_ON_START",
+    )
 
     speechkit_stt_url: str = "https://stt.api.cloud.yandex.net/speech/v1/stt:recognize"
     speechkit_async_stt_url: str = "https://transcribe.api.cloud.yandex.net/speech/stt/v2/longRunningRecognize"

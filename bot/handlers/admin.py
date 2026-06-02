@@ -16,6 +16,7 @@ from bot.models import (
     DevelopmentPlan,
     Exercise,
     InterviewRecord,
+    MediaProcessingJob,
     NotebookFillResult,
     ObserverNotebook,
     Participant,
@@ -132,6 +133,7 @@ async def _admin_panel_text(session: AsyncSession) -> str:
         f"Записи/транскрипты: {counts['records']}\n"
         f"Блокноты наблюдателя: {counts['notebooks']}\n"
         f"Оценки компетенций: {counts['assessments']}\n"
+        f"Задачи обработки: {counts['jobs']}\n"
         f"Заполненные блокноты: {counts['fills']}\n"
         f"Центры/участники/упражнения: {counts['centers']}/{counts['participants']}/{counts['exercises']}\n"
         f"Файлов в uploads: {counts['upload_files']}\n"
@@ -200,6 +202,7 @@ async def _counts(session: AsyncSession) -> dict[str, int]:
         "records": await session.scalar(select(func.count(InterviewRecord.id))) or 0,
         "notebooks": await session.scalar(select(func.count(ObserverNotebook.id))) or 0,
         "assessments": await session.scalar(select(func.count(AssessmentResult.id))) or 0,
+        "jobs": await session.scalar(select(func.count(MediaProcessingJob.id))) or 0,
         "fills": await session.scalar(select(func.count(NotebookFillResult.id))) or 0,
         "centers": await session.scalar(select(func.count(AssessmentCenter.id))) or 0,
         "participants": await session.scalar(select(func.count(Participant.id))) or 0,
@@ -254,6 +257,7 @@ async def _delete_all(session: AsyncSession) -> None:
     await session.execute(delete(AssessmentResult))
     await session.execute(delete(DevelopmentPlan))
     await session.execute(delete(ParticipantReport))
+    await session.execute(delete(MediaProcessingJob))
     await session.execute(delete(ObserverNotebook))
     await session.execute(delete(InterviewRecord))
     await session.execute(delete(Exercise))

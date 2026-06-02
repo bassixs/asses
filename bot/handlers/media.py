@@ -1,123 +1,39 @@
 from __future__ import annotations
 
-import asyncio
 from html import escape
 import logging
-import re
 from pathlib import Path
 
-from aiogram import Bot, F, Router
-from aiogram.exceptions import TelegramBadRequest, TelegramNetworkError
-from aiogram.types import File
-from aiogram.types import Message
+from aiogram import F, Router
+from aiogram.filters import Command
+from aiogram.types import CallbackQuery, FSInputFile, Message
+from sqlalchemy import desc, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from bot.config import settings
-from bot.keyboards import transcript_actions_keyboard
-from bot.models import InterviewRecord
-from bot.services.speechkit import SpeechKitError, transcribe_file
+from bot.models import InterviewRecord, MediaProcessingJob
+from bot.services.telegram_files import (
+    SUPPORTED_AUDIO_DOCUMENT_EXTENSIONS,
+    extract_media_meta,
+    format_size,
+)
 
 logger = logging.getLogger(__name__)
 router = Router()
 
-_SAFE_FILE_NAME_RE = re.compile(r"[^A-Za-z0-9_.-]+")
-SUPPORTED_AUDIO_DOCUMENT_EXTENSIONS = {".ogg", ".oga", ".opus", ".mp3", ".pcm", ".lpcm", ".raw"}
-
-
-def _extract_file_meta(message: Message) -> tuple[str, str | None, str, int | None, str | None]:
-    if message.voice:
-        return message.voice.file_id, message.voice.file_unique_id, "voice", message.voice.file_size, None
-    if message.audio:
-        return (
-            message.audio.file_id,
-            message.audio.file_unique_id,
-            "audio",
-            message.audio.file_size,
-            message.audio.file_name,
-        )
-    if message.document:
-        return (
-            message.document.file_id,
-            message.document.file_unique_id,
-            "document",
-            message.document.file_size,
-            message.document.file_name,
-        )
-    raise ValueError("Unsupported message type")
-
-
-def _format_size(size_bytes: int) -> str:
-    return f"{size_bytes / 1024 / 1024:.1f} МБ"
-
-
-def _is_telegram_file_too_big_error(exc: TelegramBadRequest) -> bool:
-    return "file is too big" in str(exc).lower()
-
-
-async def _get_telegram_file_with_retry(bot: Bot, file_id: str) -> File:
-    last_error: TelegramNetworkError | None = None
-    for attempt in range(1, settings.telegram_file_download_attempts + 1):
-        try:
-            return await bot.get_file(file_id, request_timeout=settings.telegram_file_request_timeout_seconds)
-        except TelegramNetworkError as exc:
-            last_error = exc
-            if attempt >= settings.telegram_file_download_attempts:
-                break
-            logger.warning(
-                "Telegram get_file failed, retrying attempt=%s/%s: %s",
-                attempt,
-                settings.telegram_file_download_attempts,
-                exc,
-            )
-            await asyncio.sleep(settings.telegram_file_download_retry_delay_seconds)
-    assert last_error is not None
-    raise last_error
-
-
-async def _download_telegram_path_with_retry(bot: Bot, file_path: str, destination: Path) -> None:
-    last_error: TelegramNetworkError | None = None
-    for attempt in range(1, settings.telegram_file_download_attempts + 1):
-        try:
-            await bot.download_file(
-                file_path,
-                destination=destination,
-                timeout=settings.telegram_file_download_timeout_seconds,
-            )
-            return
-        except TelegramNetworkError as exc:
-            last_error = exc
-            if attempt >= settings.telegram_file_download_attempts:
-                break
-            logger.warning(
-                "Telegram download_file failed, retrying attempt=%s/%s: %s",
-                attempt,
-                settings.telegram_file_download_attempts,
-                exc,
-            )
-            await asyncio.sleep(settings.telegram_file_download_retry_delay_seconds)
-    assert last_error is not None
-    raise last_error
-
-
-async def _download_telegram_file(bot: Bot, file_id: str, file_type: str, file_name: str | None = None) -> Path:
-    tg_file = await _get_telegram_file_with_retry(bot, file_id)
-    if tg_file.file_path is None:
-        raise RuntimeError("Telegram did not return file_path")
-    suffix = Path(file_name or "").suffix or Path(tg_file.file_path or "").suffix or ".bin"
-    settings.download_dir.mkdir(parents=True, exist_ok=True)
-    safe_file_id = _SAFE_FILE_NAME_RE.sub("_", file_id)
-    destination = settings.download_dir / f"{file_type}_{safe_file_id}{suffix}"
-    await _download_telegram_path_with_retry(bot, tg_file.file_path, destination)
-    return destination
-
 
 @router.message(F.voice | F.audio | F.document)
-async def handle_interview_file(message: Message, bot: Bot, session: AsyncSession) -> None:
+async def handle_interview_file(message: Message, session: AsyncSession) -> None:
     if message.from_user is None:
         await message.answer("Не удалось определить пользователя. Попробуйте ещё раз.")
         return
 
-    file_id, file_unique_id, file_type, file_size, file_name = _extract_file_meta(message)
+    try:
+        file_id, file_unique_id, file_type, file_size, file_name = extract_media_meta(message)
+    except ValueError:
+        await message.answer("Этот тип сообщения не поддерживается.")
+        return
+
     if message.document:
         suffix = Path(file_name or "").suffix.lower()
         if suffix not in SUPPORTED_AUDIO_DOCUMENT_EXTENSIONS:
@@ -129,54 +45,84 @@ async def handle_interview_file(message: Message, bot: Bot, session: AsyncSessio
 
     if file_size is not None and file_size > settings.telegram_download_max_bytes:
         await message.answer(
-            "Файл слишком большой для прямого скачивания через Telegram Bot API.\n\n"
-            f"Размер файла: {_format_size(file_size)}\n"
-            f"Текущий лимит: {_format_size(settings.telegram_download_max_bytes)}\n\n"
-            "Сейчас можно отправить файл меньше лимита или разделить запись на части. "
-            "Для больших записей следующим шагом лучше добавить загрузку по ссылке из облака/диска."
+            "Файл слишком большой для текущей настройки скачивания.\n\n"
+            f"Размер файла: {format_size(file_size)}\n"
+            f"Текущий лимит: {format_size(settings.telegram_download_max_bytes)}"
         )
         return
 
-    await message.answer("Файл получен. Скачиваю и отправляю на расшифровку...")
-    logger.info("Received %s from user_id=%s chat_id=%s", file_type, message.from_user.id, message.chat.id)
-
-    try:
-        local_path = await _download_telegram_file(bot, file_id, file_type, file_name)
-        transcript = await transcribe_file(local_path)
-    except SpeechKitError as exc:
-        logger.exception("SpeechKit failed")
-        await message.answer(f"Не удалось расшифровать запись: {escape(str(exc), quote=False)}")
-        return
-    except TelegramBadRequest as exc:
-        logger.exception("Telegram failed to provide media file")
-        if _is_telegram_file_too_big_error(exc):
-            await message.answer(
-                "Файл слишком большой для прямого скачивания через Telegram Bot API. "
-                f"Попробуйте отправить запись до {_format_size(settings.telegram_download_max_bytes)} "
-                "или разбить интервью на несколько файлов."
-            )
-        else:
-            await message.answer(f"Telegram не отдал файл для обработки: {escape(str(exc), quote=False)}")
-        return
-    except Exception:
-        logger.exception("Unexpected media handling error")
-        await message.answer("Произошла ошибка при обработке файла. Попробуйте позже.")
-        return
-
-    record = InterviewRecord(
+    job = MediaProcessingJob(
         chat_id=message.chat.id,
         user_id=message.from_user.id,
         file_id=file_id,
         file_unique_id=file_unique_id,
         file_type=file_type,
-        file_path=str(local_path),
-        transcript=transcript,
+        file_name=file_name,
+        file_size=file_size,
+        status="queued",
     )
-    session.add(record)
+    session.add(job)
     await session.commit()
-    await session.refresh(record)
+    await session.refresh(job)
 
+    logger.info("Queued media job id=%s file_type=%s user_id=%s chat_id=%s", job.id, file_type, job.user_id, job.chat_id)
     await message.answer(
-        f"✅ Расшифровано. ID: {record.id}. Напиши /assess {record.id} для оценки по компетенциям",
-        reply_markup=transcript_actions_keyboard(record.id),
+        f"Задача #{job.id}: файл получен и поставлен в очередь.\n"
+        "Я пришлю статусы обработки и сообщение с кнопкой скачивания после расшифровки."
     )
+
+
+@router.callback_query(F.data.startswith("transcript_file:"))
+async def callback_transcript_file(callback: CallbackQuery, session: AsyncSession) -> None:
+    if callback.from_user is None or callback.message is None:
+        await callback.answer("Не удалось обработать запрос", show_alert=True)
+        return
+
+    record_id = int(callback.data.split(":", maxsplit=1)[1])
+    record = await session.scalar(
+        select(InterviewRecord).where(
+            InterviewRecord.id == record_id,
+            InterviewRecord.user_id == callback.from_user.id,
+        )
+    )
+    if record is None:
+        await callback.answer("Запись не найдена", show_alert=True)
+        return
+    if not record.transcript_file_path:
+        await callback.answer("Файл расшифровки пока не сформирован", show_alert=True)
+        return
+
+    path = Path(record.transcript_file_path)
+    if not path.exists():
+        await callback.answer("Файл расшифровки не найден на сервере", show_alert=True)
+        return
+
+    await callback.answer("Отправляю файл")
+    await callback.message.answer_document(
+        FSInputFile(path, filename=path.name),
+        caption=f"Расшифровка записи #{record.id}",
+    )
+
+
+@router.message(Command("my_records"))
+async def cmd_my_records(message: Message, session: AsyncSession) -> None:
+    if message.from_user is None:
+        await message.answer("Не удалось определить пользователя.")
+        return
+
+    records = list(
+        await session.scalars(
+            select(InterviewRecord)
+            .where(InterviewRecord.user_id == message.from_user.id)
+            .order_by(desc(InterviewRecord.created_at))
+            .limit(10)
+        )
+    )
+    if not records:
+        await message.answer("У вас пока нет расшифрованных записей.")
+        return
+
+    lines = ["Последние расшифрованные записи:"]
+    for record in records:
+        lines.append(f"#{record.id}: {record.file_type}, {len(record.transcript)} символов")
+    await message.answer(escape("\n".join(lines), quote=False))

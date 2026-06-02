@@ -23,6 +23,7 @@ class InterviewRecord(Base):
     file_unique_id: Mapped[str | None] = mapped_column(String(512), nullable=True)
     file_type: Mapped[str] = mapped_column(String(32))
     file_path: Mapped[str | None] = mapped_column(String(1024), nullable=True)
+    transcript_file_path: Mapped[str | None] = mapped_column(String(1024), nullable=True)
     transcript: Mapped[str] = mapped_column(Text)
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True),
