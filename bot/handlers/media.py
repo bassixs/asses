@@ -12,11 +12,13 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from bot.config import settings
 from bot.models import InterviewRecord, MediaProcessingJob
+from bot.services.speechkit import normalize_transcript_text
 from bot.services.telegram_files import (
     SUPPORTED_AUDIO_DOCUMENT_EXTENSIONS,
     extract_media_meta,
     format_size,
 )
+from bot.services.transcript_export import build_transcript_text_file
 
 logger = logging.getLogger(__name__)
 router = Router()
@@ -126,3 +128,39 @@ async def cmd_my_records(message: Message, session: AsyncSession) -> None:
     for record in records:
         lines.append(f"#{record.id}: {record.file_type}, {len(record.transcript)} символов")
     await message.answer(escape("\n".join(lines), quote=False))
+
+
+@router.message(Command("rebuild_transcript"))
+async def cmd_rebuild_transcript(message: Message, session: AsyncSession) -> None:
+    if message.from_user is None:
+        await message.answer("Не удалось определить пользователя.")
+        return
+
+    args = (message.text or "").split(maxsplit=1)
+    if len(args) != 2 or not args[1].strip().isdigit():
+        await message.answer("Формат: /rebuild_transcript <ID записи>\nНапример: /rebuild_transcript 1")
+        return
+
+    record_id = int(args[1].strip())
+    record = await session.scalar(
+        select(InterviewRecord).where(
+            InterviewRecord.id == record_id,
+            InterviewRecord.user_id == message.from_user.id,
+        )
+    )
+    if record is None:
+        await message.answer("Запись не найдена.")
+        return
+
+    await message.answer("Пересобираю файл расшифровки: очищаю повторы и заново размечаю роли...")
+    record.transcript = normalize_transcript_text(record.transcript)
+    await session.commit()
+
+    transcript_path = await build_transcript_text_file(transcript=record.transcript, record_id=record.id)
+    record.transcript_file_path = str(transcript_path)
+    await session.commit()
+
+    await message.answer_document(
+        FSInputFile(transcript_path, filename=transcript_path.name),
+        caption=f"Обновлённая расшифровка записи #{record.id}",
+    )

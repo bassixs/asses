@@ -74,6 +74,14 @@ class Settings(BaseSettings):
         default=7200,
         validation_alias="SPEECHKIT_ASYNC_TIMEOUT_SECONDS",
     )
+    speechkit_deduplicate_transcript: bool = Field(
+        default=True,
+        validation_alias="SPEECHKIT_DEDUPLICATE_TRANSCRIPT",
+    )
+    speechkit_dedup_similarity_threshold: float = Field(
+        default=0.88,
+        validation_alias="SPEECHKIT_DEDUP_SIMILARITY_THRESHOLD",
+    )
     admin_bot_password: str = Field(default="1172", validation_alias="ADMIN_BOT_PASSWORD")
     competencies: list[str] = Field(default_factory=lambda: DEFAULT_COMPETENCIES.copy())
 

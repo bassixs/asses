@@ -2,6 +2,9 @@ from __future__ import annotations
 
 import asyncio
 import logging
+import re
+from dataclasses import dataclass
+from difflib import SequenceMatcher
 from pathlib import Path
 from typing import Any
 
@@ -20,6 +23,12 @@ ASYNC_AUDIO_EXTENSIONS = SYNC_OGG_OPUS_EXTENSIONS | SYNC_LPCM_EXTENSIONS | ASYNC
 
 class SpeechKitError(RuntimeError):
     pass
+
+
+@dataclass(frozen=True)
+class TranscriptSegment:
+    text: str
+    timestamp: str | None = None
 
 
 def _detect_async_audio_encoding(file_path: Path) -> str:
@@ -97,6 +106,7 @@ async def _transcribe_file_sync(file_path: Path, *, language_code: str = "ru-RU"
         logger.warning("SpeechKit returned an empty transcript: %s", payload)
         raise SpeechKitError("SpeechKit returned an empty transcript")
 
+    transcript = normalize_transcript_text(transcript)
     logger.info("SpeechKit transcript received, length=%s", len(transcript))
     return transcript
 
@@ -197,27 +207,133 @@ async def _wait_async_operation(operation_id: str) -> dict[str, Any]:
 
 
 def _extract_transcript(operation: dict[str, Any]) -> str:
+    segments = _extract_transcript_segments(operation)
+    if settings.speechkit_deduplicate_transcript:
+        segments = _deduplicate_segments(segments)
+    return _format_transcript_segments(segments)
+
+
+def normalize_transcript_text(transcript: str) -> str:
+    """Clean an already formatted transcript without calling SpeechKit again."""
+    segments = [_parse_transcript_line(line) for line in transcript.splitlines()]
+    segments = [segment for segment in segments if segment is not None]
+    if settings.speechkit_deduplicate_transcript:
+        segments = _deduplicate_segments(segments)
+    return _format_transcript_segments(segments)
+
+
+def _extract_transcript_segments(operation: dict[str, Any]) -> list[TranscriptSegment]:
     chunks = operation.get("response", {}).get("chunks", [])
-    parts: list[str] = []
+    segments: list[TranscriptSegment] = []
     for chunk in chunks:
         alternatives = chunk.get("alternatives") or []
         if not alternatives:
             continue
-        text = str(alternatives[0].get("text", "")).strip()
+        alternative = alternatives[0]
+        text = _clean_transcript_text(str(alternative.get("text", "")).strip())
         if text:
-            timestamp = _format_chunk_timestamp(chunk)
-            parts.append(f"[{timestamp}] {text}" if timestamp else text)
+            segments.append(TranscriptSegment(text=text, timestamp=_format_segment_timestamp(chunk, alternative)))
+    return segments
+
+
+def _deduplicate_segments(segments: list[TranscriptSegment]) -> list[TranscriptSegment]:
+    cleaned: list[TranscriptSegment] = []
+    threshold = settings.speechkit_dedup_similarity_threshold
+
+    for segment in segments:
+        normalized = _normalize_for_dedup(segment.text)
+        if not normalized:
+            continue
+
+        duplicate_index = _find_recent_duplicate(cleaned, normalized, threshold=threshold)
+        if duplicate_index is None:
+            cleaned.append(segment)
+            continue
+
+        existing = cleaned[duplicate_index]
+        if len(_normalize_for_dedup(segment.text)) > len(_normalize_for_dedup(existing.text)):
+            cleaned[duplicate_index] = TranscriptSegment(text=segment.text, timestamp=existing.timestamp or segment.timestamp)
+
+    return cleaned
+
+
+def _find_recent_duplicate(
+    segments: list[TranscriptSegment],
+    normalized_text: str,
+    *,
+    threshold: float,
+    window_size: int = 4,
+) -> int | None:
+    for index in range(len(segments) - 1, max(-1, len(segments) - window_size - 1), -1):
+        candidate = _normalize_for_dedup(segments[index].text)
+        if not candidate:
+            continue
+        if candidate == normalized_text:
+            return index
+        if len(normalized_text) > 40 and (normalized_text in candidate or candidate in normalized_text):
+            return index
+        if _similarity(candidate, normalized_text) >= threshold:
+            return index
+    return None
+
+
+def _format_transcript_segments(segments: list[TranscriptSegment]) -> str:
+    parts: list[str] = []
+    for segment in segments:
+        parts.append(f"[{segment.timestamp}] {segment.text}" if segment.timestamp else segment.text)
     return "\n".join(parts).strip()
 
 
-def _format_chunk_timestamp(chunk: dict[str, Any]) -> str | None:
-    start = chunk.get("startTime") or chunk.get("start_time")
+def _clean_transcript_text(text: str) -> str:
+    text = re.sub(r"\s+", " ", text).strip()
+    return text
+
+
+def _parse_transcript_line(line: str) -> TranscriptSegment | None:
+    line = _clean_transcript_text(line)
+    if not line:
+        return None
+    match = re.match(r"^\[(?P<timestamp>\d{2}:\d{2}(?::\d{2})?)\]\s*(?P<text>.+)$", line)
+    if match:
+        return TranscriptSegment(text=_clean_transcript_text(match.group("text")), timestamp=match.group("timestamp"))
+    return TranscriptSegment(text=line)
+
+
+def _normalize_for_dedup(text: str) -> str:
+    text = text.lower()
+    text = re.sub(r"\[[0-9: ]+\]", " ", text)
+    text = re.sub(r"[^0-9a-zа-яё]+", " ", text, flags=re.IGNORECASE)
+    return re.sub(r"\s+", " ", text).strip()
+
+
+def _similarity(left: str, right: str) -> float:
+    return SequenceMatcher(a=left, b=right, autojunk=False).ratio()
+
+
+def _format_segment_timestamp(chunk: dict[str, Any], alternative: dict[str, Any]) -> str | None:
+    start = (
+        alternative.get("startTime")
+        or alternative.get("start_time")
+        or _first_word_start_time(alternative)
+        or chunk.get("startTime")
+        or chunk.get("start_time")
+    )
     if not start:
         return None
     seconds = _duration_to_seconds(str(start))
     minutes = int(seconds // 60)
     rest = int(seconds % 60)
     return f"{minutes:02d}:{rest:02d}"
+
+
+def _first_word_start_time(alternative: dict[str, Any]) -> str | None:
+    words = alternative.get("words") or []
+    if not words:
+        return None
+    first_word = words[0]
+    if not isinstance(first_word, dict):
+        return None
+    return first_word.get("startTime") or first_word.get("start_time")
 
 
 def _duration_to_seconds(value: str) -> float:
