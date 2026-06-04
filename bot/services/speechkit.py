@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+import json
 import logging
 import re
 from dataclasses import dataclass
@@ -29,6 +30,7 @@ class SpeechKitError(RuntimeError):
 class TranscriptSegment:
     text: str
     timestamp: str | None = None
+    speaker_tag: str | None = None
 
 
 def _detect_async_audio_encoding(file_path: Path) -> str:
@@ -42,6 +44,20 @@ def _detect_async_audio_encoding(file_path: Path) -> str:
     raise SpeechKitError(
         "Асинхронный SpeechKit v2 поддерживает Ogg Opus, MP3 и raw LPCM. "
         "Для WAV/M4A/документов нужна предварительная конвертация в MP3 или Ogg Opus."
+    )
+
+
+def _detect_v3_container_audio_type(file_path: Path) -> str:
+    suffix = file_path.suffix.lower()
+    if suffix in ASYNC_MP3_EXTENSIONS:
+        return "MP3"
+    if suffix in SYNC_OGG_OPUS_EXTENSIONS:
+        return "OGG_OPUS"
+    if suffix in {".wav"}:
+        return "WAV"
+    raise SpeechKitError(
+        "SpeechKit v3 поддерживает контейнеры MP3, Ogg Opus и WAV. "
+        "Для этого файла нужна конвертация в MP3/Ogg/WAV."
     )
 
 
@@ -112,12 +128,33 @@ async def _transcribe_file_sync(file_path: Path, *, language_code: str = "ru-RU"
 
 
 async def transcribe_file_async(file_path: Path, *, language_code: str = "ru-RU") -> str:
-    """Upload a long audio file to Object Storage and recognize it via SpeechKit API v2."""
-    audio_encoding = _detect_async_audio_encoding(file_path)
+    """Upload a long audio file to Object Storage and recognize it via SpeechKit async API."""
     try:
         audio_url = await upload_file_for_speechkit(file_path)
     except ObjectStorageError as exc:
         raise SpeechKitError(str(exc)) from exc
+
+    if settings.speechkit_async_api_version.lower() == "v3":
+        try:
+            return await _transcribe_file_async_v3(
+                file_path=file_path,
+                audio_url=audio_url,
+                language_code=language_code,
+            )
+        except SpeechKitError:
+            if not settings.speechkit_v3_fallback_to_v2:
+                raise
+            logger.exception("SpeechKit v3 failed, falling back to async v2")
+
+    return await _transcribe_file_async_v2(
+        file_path=file_path,
+        audio_url=audio_url,
+        language_code=language_code,
+    )
+
+
+async def _transcribe_file_async_v2(*, file_path: Path, audio_url: str, language_code: str) -> str:
+    audio_encoding = _detect_async_audio_encoding(file_path)
     operation_id = await _start_async_recognition(
         audio_url=audio_url,
         audio_encoding=audio_encoding,
@@ -128,6 +165,22 @@ async def transcribe_file_async(file_path: Path, *, language_code: str = "ru-RU"
     if not transcript:
         raise SpeechKitError("SpeechKit async recognition returned an empty transcript")
     logger.info("SpeechKit async transcript received, length=%s", len(transcript))
+    return transcript
+
+
+async def _transcribe_file_async_v3(*, file_path: Path, audio_url: str, language_code: str) -> str:
+    container_audio_type = _detect_v3_container_audio_type(file_path)
+    operation_id = await _start_async_recognition_v3(
+        audio_url=audio_url,
+        container_audio_type=container_audio_type,
+        language_code=language_code,
+    )
+    await _wait_async_operation(operation_id)
+    recognition = await _get_async_recognition_v3(operation_id)
+    transcript = _extract_transcript_v3(recognition)
+    if not transcript:
+        raise SpeechKitError("SpeechKit async v3 recognition returned an empty transcript")
+    logger.info("SpeechKit async v3 transcript received, length=%s", len(transcript))
     return transcript
 
 
@@ -178,6 +231,62 @@ async def _start_async_recognition(
     return str(operation_id)
 
 
+async def _start_async_recognition_v3(
+    *,
+    audio_url: str,
+    container_audio_type: str,
+    language_code: str,
+) -> str:
+    headers = _speechkit_headers()
+    body: dict[str, Any] = {
+        "uri": audio_url,
+        "recognitionModel": {
+            "model": settings.speechkit_v3_model,
+            "audioFormat": {
+                "containerAudio": {
+                    "containerAudioType": container_audio_type,
+                },
+            },
+            "textNormalization": {
+                "textNormalization": "TEXT_NORMALIZATION_ENABLED",
+                "profanityFilter": False,
+                "literatureText": True,
+                "phoneFormattingMode": "PHONE_FORMATTING_MODE_DISABLED",
+            },
+            "languageRestriction": {
+                "restrictionType": "WHITELIST",
+                "languageCode": [language_code],
+            },
+            "audioProcessingType": "FULL_DATA",
+        },
+    }
+    if settings.speechkit_v3_enable_speaker_labeling:
+        body["speakerLabeling"] = {"speakerLabeling": "SPEAKER_LABELING_ENABLED"}
+        body["speechAnalysis"] = {
+            "enableSpeakerAnalysis": True,
+            "enableConversationAnalysis": True,
+        }
+
+    async with aiohttp.ClientSession() as session:
+        async with session.post(
+            settings.speechkit_async_stt_v3_url,
+            headers=headers,
+            json=body,
+            timeout=aiohttp.ClientTimeout(total=60),
+        ) as response:
+            payload = await response.json(content_type=None)
+
+    if response.status >= 400:
+        logger.error("SpeechKit async v3 start error %s: %s", response.status, payload)
+        raise SpeechKitError(f"SpeechKit async v3 start returned HTTP {response.status}: {payload}")
+
+    operation_id = payload.get("id")
+    if not operation_id:
+        raise SpeechKitError(f"SpeechKit async v3 start returned no operation id: {payload}")
+    logger.info("SpeechKit async v3 operation started: %s", operation_id)
+    return str(operation_id)
+
+
 async def _wait_async_operation(operation_id: str) -> dict[str, Any]:
     headers = {"Authorization": f"Api-Key {settings.yandex_speechkit_api_key}"}
     deadline = asyncio.get_running_loop().time() + settings.speechkit_async_timeout_seconds
@@ -206,11 +315,149 @@ async def _wait_async_operation(operation_id: str) -> dict[str, Any]:
             await asyncio.sleep(settings.speechkit_async_poll_interval_seconds)
 
 
+async def _get_async_recognition_v3(operation_id: str) -> Any:
+    headers = _speechkit_headers()
+    async with aiohttp.ClientSession() as session:
+        async with session.get(
+            settings.speechkit_async_stt_v3_result_url,
+            params={"operationId": operation_id},
+            headers=headers,
+            timeout=aiohttp.ClientTimeout(total=180),
+        ) as response:
+            payload = await _read_json_or_json_lines(response)
+
+    if response.status >= 400:
+        logger.error("SpeechKit async v3 result error %s: %s", response.status, payload)
+        raise SpeechKitError(f"SpeechKit async v3 result returned HTTP {response.status}: {payload}")
+    return payload
+
+
+async def _read_json_or_json_lines(response: aiohttp.ClientResponse) -> Any:
+    text = await response.text()
+    if not text.strip():
+        return {}
+    try:
+        return json.loads(text)
+    except json.JSONDecodeError:
+        items: list[Any] = []
+        for line in text.splitlines():
+            line = line.strip()
+            if not line:
+                continue
+            items.append(json.loads(line))
+        return items
+
+
+def _speechkit_headers() -> dict[str, str]:
+    return {
+        "Authorization": f"Api-Key {settings.yandex_speechkit_api_key}",
+        "Content-Type": "application/json",
+        "x-folder-id": settings.yandex_folder_id,
+    }
+
+
 def _extract_transcript(operation: dict[str, Any]) -> str:
     segments = _extract_transcript_segments(operation)
     if settings.speechkit_deduplicate_transcript:
         segments = _deduplicate_segments(segments)
     return _format_transcript_segments(segments)
+
+
+def _extract_transcript_v3(payload: Any) -> str:
+    segments: list[TranscriptSegment] = []
+    final_segments_by_index: dict[str, TranscriptSegment] = {}
+
+    for event in _iter_v3_events(payload):
+        final_payload = event.get("final")
+        if isinstance(final_payload, dict):
+            segment = _extract_v3_segment(event, final_payload)
+            if segment is not None:
+                final_index = str(event.get("audioCursors", {}).get("finalIndex") or len(final_segments_by_index))
+                final_segments_by_index[final_index] = segment
+                segments.append(segment)
+
+        refinement_payload = event.get("finalRefinement")
+        if isinstance(refinement_payload, dict):
+            normalized = refinement_payload.get("normalizedText")
+            if isinstance(normalized, dict):
+                segment = _extract_v3_segment(event, normalized)
+                final_index = str(refinement_payload.get("finalIndex") or event.get("audioCursors", {}).get("finalIndex") or "")
+                if segment is not None:
+                    if final_index and final_index in final_segments_by_index:
+                        previous = final_segments_by_index[final_index]
+                        refined = TranscriptSegment(
+                            text=segment.text,
+                            timestamp=segment.timestamp or previous.timestamp,
+                            speaker_tag=segment.speaker_tag or previous.speaker_tag,
+                        )
+                        final_segments_by_index[final_index] = refined
+                        try:
+                            segments[segments.index(previous)] = refined
+                        except ValueError:
+                            segments.append(refined)
+                    else:
+                        segments.append(segment)
+
+    if settings.speechkit_deduplicate_transcript:
+        segments = _deduplicate_segments(segments)
+    return _format_transcript_segments(segments)
+
+
+def _iter_v3_events(payload: Any) -> list[dict[str, Any]]:
+    if isinstance(payload, list):
+        return [item for item in payload if isinstance(item, dict)]
+    if not isinstance(payload, dict):
+        return []
+    if any(key in payload for key in ("final", "finalRefinement", "partial", "speakerAnalysis")):
+        return [payload]
+    for key in ("result", "response", "responses", "chunks"):
+        value = payload.get(key)
+        if isinstance(value, list):
+            return [item for item in value if isinstance(item, dict)]
+    return []
+
+
+def _extract_v3_segment(event: dict[str, Any], speech_payload: dict[str, Any]) -> TranscriptSegment | None:
+    alternatives = speech_payload.get("alternatives") or []
+    if not alternatives:
+        return None
+    alternative = alternatives[0]
+    if not isinstance(alternative, dict):
+        return None
+    text = _clean_transcript_text(str(alternative.get("text", "")).strip())
+    if not text:
+        return None
+    timestamp = _format_v3_timestamp(alternative.get("startTimeMs") or speech_payload.get("startTimeMs"))
+    speaker_tag = _find_speaker_tag(event, speech_payload, alternative)
+    return TranscriptSegment(text=text, timestamp=timestamp, speaker_tag=speaker_tag)
+
+
+def _find_speaker_tag(*items: Any) -> str | None:
+    for item in items:
+        if not isinstance(item, dict):
+            continue
+        for key in ("speakerTag", "speaker_tag"):
+            value = item.get(key)
+            if value:
+                return str(value)
+        words = item.get("words") or []
+        if words and isinstance(words[0], dict):
+            tag = _find_speaker_tag(words[0])
+            if tag:
+                return tag
+    return None
+
+
+def _format_v3_timestamp(value: Any) -> str | None:
+    if value is None:
+        return None
+    try:
+        seconds = int(str(value)) / 1000
+    except ValueError:
+        return None
+    minutes = int(seconds // 60)
+    rest = int(seconds % 60)
+    return f"{minutes:02d}:{rest:02d}"
 
 
 def normalize_transcript_text(transcript: str) -> str:
@@ -298,7 +545,11 @@ def _is_same_timestamp_duplicate(
 def _format_transcript_segments(segments: list[TranscriptSegment]) -> str:
     parts: list[str] = []
     for segment in segments:
-        parts.append(f"[{segment.timestamp}] {segment.text}" if segment.timestamp else segment.text)
+        speaker = f"{segment.speaker_tag}: " if segment.speaker_tag else ""
+        if segment.timestamp:
+            parts.append(f"[{segment.timestamp}] {speaker}{segment.text}")
+        else:
+            parts.append(f"{speaker}{segment.text}")
     return "\n".join(parts).strip()
 
 
@@ -311,9 +562,16 @@ def _parse_transcript_line(line: str) -> TranscriptSegment | None:
     line = _clean_transcript_text(line)
     if not line:
         return None
-    match = re.match(r"^\[(?P<timestamp>\d{2}:\d{2}(?::\d{2})?)\]\s*(?P<text>.+)$", line)
+    match = re.match(
+        r"^\[(?P<timestamp>\d{2}:\d{2}(?::\d{2})?)\]\s*(?:(?P<speaker>[^:]{1,64}):\s*)?(?P<text>.+)$",
+        line,
+    )
     if match:
-        return TranscriptSegment(text=_clean_transcript_text(match.group("text")), timestamp=match.group("timestamp"))
+        return TranscriptSegment(
+            text=_clean_transcript_text(match.group("text")),
+            timestamp=match.group("timestamp"),
+            speaker_tag=match.group("speaker"),
+        )
     return TranscriptSegment(text=line)
 
 

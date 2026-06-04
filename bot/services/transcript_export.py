@@ -1,7 +1,9 @@
 from __future__ import annotations
 
 import logging
+from dataclasses import dataclass
 from pathlib import Path
+import re
 from typing import Literal
 
 from pydantic import BaseModel, Field, ValidationError
@@ -23,6 +25,22 @@ class RoleSegment(BaseModel):
 
 class RoleLabeledChunk(BaseModel):
     segments: list[RoleSegment] = Field(default_factory=list)
+
+
+@dataclass(frozen=True)
+class InputTranscriptLine:
+    timestamp: str | None
+    text: str
+    source_speaker: str | None = None
+
+
+class SpeakerRole(BaseModel):
+    speaker: str
+    role: RoleName
+
+
+class SpeakerRoleMap(BaseModel):
+    speakers: list[SpeakerRole] = Field(default_factory=list)
 
 
 async def build_transcript_text_file(*, transcript: str, record_id: int) -> Path:
@@ -47,6 +65,19 @@ async def _build_role_labeled_transcript(transcript: str) -> str:
     if not lines:
         return ""
 
+    speaker_role_map = await _map_source_speakers_to_roles(lines)
+    if speaker_role_map:
+        return "\n".join(
+            _format_role_segment(
+                RoleSegment(
+                    role=speaker_role_map.get(line.source_speaker or "", "ведущий"),
+                    timestamp=line.timestamp,
+                    text=line.text,
+                )
+            )
+            for line in lines
+        ).strip()
+
     labeled_segments: list[RoleSegment] = []
     for chunk in _chunk_lines(lines):
         labeled_segments.extend(await _label_role_chunk(chunk))
@@ -54,7 +85,7 @@ async def _build_role_labeled_transcript(transcript: str) -> str:
     return "\n".join(_format_role_segment(segment) for segment in labeled_segments).strip()
 
 
-async def _label_role_chunk(lines: list[RoleSegment]) -> list[RoleSegment]:
+async def _label_role_chunk(lines: list[InputTranscriptLine]) -> list[RoleSegment]:
     try:
         raw = await complete_json(
             system_prompt=_role_breakdown_system_prompt(),
@@ -88,23 +119,75 @@ async def _label_role_chunk(lines: list[RoleSegment]) -> list[RoleSegment]:
     return segments
 
 
-def _parse_input_lines(transcript: str) -> list[RoleSegment]:
-    lines: list[RoleSegment] = []
+async def _map_source_speakers_to_roles(lines: list[InputTranscriptLine]) -> dict[str, RoleName]:
+    speakers = sorted({line.source_speaker for line in lines if line.source_speaker})
+    if len(speakers) < 2:
+        return {}
+    direct_roles = {speaker: speaker for speaker in speakers if speaker in {"ведущий", "участник"}}
+    if set(direct_roles.values()) == {"ведущий", "участник"}:
+        return direct_roles
+    if len(speakers) > 2:
+        speakers = speakers[:2]
+
+    try:
+        raw = await complete_json(
+            system_prompt=_speaker_map_system_prompt(),
+            user_prompt=_build_speaker_map_user_prompt(lines, speakers),
+            json_schema=SpeakerRoleMap.model_json_schema(),
+            temperature=0.0,
+            max_tokens=1200,
+        )
+        mapping = SpeakerRoleMap.model_validate(raw)
+    except (YandexGPTError, ValidationError) as exc:
+        logger.warning("Failed to map source speakers, heuristic mapping will be used: %s", exc)
+        return _heuristic_speaker_role_map(lines, speakers)
+
+    role_by_speaker = {item.speaker: item.role for item in mapping.speakers if item.speaker in speakers}
+    if set(role_by_speaker.values()) != {"ведущий", "участник"}:
+        return _heuristic_speaker_role_map(lines, speakers)
+    return role_by_speaker
+
+
+def _parse_input_lines(transcript: str) -> list[InputTranscriptLine]:
+    lines: list[InputTranscriptLine] = []
     for raw_line in transcript.splitlines():
         line = raw_line.strip()
         if not line:
             continue
         if line.startswith("[") and "]" in line:
             timestamp, text = line[1:].split("]", maxsplit=1)
-            lines.append(RoleSegment(role="ведущий", timestamp=timestamp.strip(), text=text.strip()))
+            source_speaker, clean_text = _split_source_speaker(text.strip())
+            lines.append(
+                InputTranscriptLine(
+                    timestamp=timestamp.strip(),
+                    text=clean_text,
+                    source_speaker=source_speaker,
+                )
+            )
         else:
-            lines.append(RoleSegment(role="ведущий", timestamp=None, text=line))
+            source_speaker, clean_text = _split_source_speaker(line)
+            lines.append(InputTranscriptLine(timestamp=None, text=clean_text, source_speaker=source_speaker))
     return lines
 
 
-def _chunk_lines(lines: list[RoleSegment], *, max_chars: int = 6500) -> list[list[RoleSegment]]:
-    chunks: list[list[RoleSegment]] = []
-    current: list[RoleSegment] = []
+def _split_source_speaker(text: str) -> tuple[str | None, str]:
+    if ":" not in text:
+        return None, text
+    candidate, rest = text.split(":", maxsplit=1)
+    candidate = candidate.strip()
+    if not candidate or len(candidate) > 64:
+        return None, text
+    lowered = candidate.lower()
+    if lowered in {"ведущий", "участник"} or lowered.startswith("speaker") or lowered.startswith("spk"):
+        return candidate, rest.strip()
+    if re.fullmatch(r"[a-zA-Z0-9_-]{1,32}", candidate):
+        return candidate, rest.strip()
+    return None, text
+
+
+def _chunk_lines(lines: list[InputTranscriptLine], *, max_chars: int = 6500) -> list[list[InputTranscriptLine]]:
+    chunks: list[list[InputTranscriptLine]] = []
+    current: list[InputTranscriptLine] = []
     current_chars = 0
     for line in lines:
         line_chars = len(line.text) + len(line.timestamp or "") + 16
@@ -119,12 +202,28 @@ def _chunk_lines(lines: list[RoleSegment], *, max_chars: int = 6500) -> list[lis
     return chunks
 
 
-def _build_role_chunk_user_prompt(lines: list[RoleSegment]) -> str:
+def _build_role_chunk_user_prompt(lines: list[InputTranscriptLine]) -> str:
     formatted_lines = []
     for index, line in enumerate(lines, start=1):
         timestamp = f"[{line.timestamp}] " if line.timestamp else ""
-        formatted_lines.append(f"{index}. {timestamp}{line.text}")
+        source_speaker = f"{line.source_speaker}: " if line.source_speaker else ""
+        formatted_lines.append(f"{index}. {timestamp}{source_speaker}{line.text}")
     return "Разметь каждую строку:\n\n" + "\n".join(formatted_lines)
+
+
+def _build_speaker_map_user_prompt(lines: list[InputTranscriptLine], speakers: list[str]) -> str:
+    examples: list[str] = []
+    for speaker in speakers:
+        speaker_lines = [line for line in lines if line.source_speaker == speaker][:16]
+        examples.append(f"Спикер {speaker}:")
+        for line in speaker_lines:
+            timestamp = f"[{line.timestamp}] " if line.timestamp else ""
+            examples.append(f"- {timestamp}{line.text}")
+    return (
+        "Определи, какой технический speakerTag соответствует ведущему, а какой участнику.\n"
+        f"Доступные speakerTag: {', '.join(speakers)}\n\n"
+        + "\n".join(examples)
+    )
 
 
 def _format_role_segment(segment: RoleSegment) -> str:
@@ -132,8 +231,37 @@ def _format_role_segment(segment: RoleSegment) -> str:
     return f"{timestamp}{segment.role}: {segment.text.strip()}"
 
 
-def _heuristic_role_segment(line: RoleSegment) -> RoleSegment:
+def _heuristic_speaker_role_map(lines: list[InputTranscriptLine], speakers: list[str]) -> dict[str, RoleName]:
+    scores: dict[str, int] = {speaker: 0 for speaker in speakers}
+    for line in lines:
+        if not line.source_speaker or line.source_speaker not in scores:
+            continue
+        text = line.text.lower()
+        if _looks_like_leading_text(text):
+            scores[line.source_speaker] += 2
+        if "?" in text:
+            scores[line.source_speaker] += 1
+
+    leading_speaker = max(scores, key=scores.get)
+    return {
+        speaker: ("ведущий" if speaker == leading_speaker else "участник")
+        for speaker in speakers
+    }
+
+
+def _heuristic_role_segment(line: InputTranscriptLine) -> RoleSegment:
     text = line.text.lower()
+    role: RoleName
+    if _looks_like_leading_text(text):
+        role = "ведущий"
+    elif _looks_like_participant_text(text):
+        role = "участник"
+    else:
+        role = "ведущий"
+    return RoleSegment(role=role, timestamp=line.timestamp, text=line.text)
+
+
+def _looks_like_leading_text(text: str) -> bool:
     leading_cues = (
         "скажите",
         "давайте",
@@ -145,6 +273,10 @@ def _heuristic_role_segment(line: RoleSegment) -> RoleSegment:
         "ознакомьтесь",
         "мой вопрос",
     )
+    return any(cue in text for cue in leading_cues)
+
+
+def _looks_like_participant_text(text: str) -> bool:
     participant_cues = (
         "я ",
         "мне ",
@@ -155,13 +287,22 @@ def _heuristic_role_segment(line: RoleSegment) -> RoleSegment:
         "хотелось бы",
         "могу сказать",
     )
-    if any(cue in text for cue in leading_cues):
-        role: RoleName = "ведущий"
-    elif any(cue in text for cue in participant_cues):
-        role = "участник"
-    else:
-        role = "ведущий"
-    return RoleSegment(role=role, timestamp=line.timestamp, text=line.text)
+    return any(cue in text for cue in participant_cues)
+
+
+def _speaker_map_system_prompt() -> str:
+    return """
+Ты размечаешь транскрипт ассессмент-центра.
+
+Есть ровно две роли:
+1. "ведущий" — задает вопросы, объясняет упражнение, дает инструкции, управляет встречей.
+2. "участник" — отвечает на вопросы, говорит о себе, своих задачах, трудностях, решениях.
+
+Тебе даны технические speakerTag из системы распознавания и примеры реплик каждого speakerTag.
+Нужно вернуть JSON: каждому speakerTag назначь одну роль.
+Роли должны быть распределены так, чтобы один speakerTag был "ведущий", второй — "участник".
+Не добавляй других ролей.
+""".strip()
 
 
 def _role_breakdown_system_prompt() -> str:

@@ -3,11 +3,12 @@
 Бот использует два режима SpeechKit:
 
 - короткие файлы Ogg Opus / raw LPCM: синхронный SpeechKit API v1;
-- длинные интервью и MP3-файлы: загрузка в Object Storage + асинхронный SpeechKit API v2.
+- длинные интервью и MP3-файлы: загрузка в Object Storage + асинхронный SpeechKit API v3 с speaker labeling;
+- асинхронный SpeechKit API v2 используется как fallback, если v3 вернул ошибку.
 
 Официальная документация:
 
-- Для асинхронного SpeechKit v2 нужен bucket в Object Storage, сервисный аккаунт с ролями `ai.speechkit-stt.user` и `storage.uploader`, а также API-ключ или IAM-токен.
+- Для асинхронного SpeechKit v3 нужен bucket в Object Storage, сервисный аккаунт с ролями `ai.speechkit-stt.user` и `storage.uploader`, а также API-ключ или IAM-токен.
 - Доступ к Object Storage из Python выполняется через S3-совместимые статические ключи и endpoint `https://storage.yandexcloud.net`.
 
 ## 1. Предварительные требования
@@ -66,10 +67,16 @@ YANDEX_STORAGE_PREFIX=interviews
 
 ## 4. Форматы аудио
 
-Асинхронный SpeechKit API v2 поддерживает:
+Основной режим бота — асинхронный SpeechKit API v3. В коде включены контейнеры:
+
+- Ogg Opus: `.ogg`, `.oga`, `.opus`
+- MP3: `.mp3`
+- WAV: `.wav`
+
+Fallback-режим SpeechKit API v2 поддерживает:
 
 - Ogg Opus: `.ogg`, `.oga`, `.opus`
 - MP3: `.mp3`
 - raw LPCM: `.pcm`, `.lpcm`, `.raw`
 
-Для `.wav`, `.m4a`, `.aac`, `.mp4`, `.docx`, `.pdf` нужно добавить отдельный шаг конвертации или извлечения аудио перед распознаванием.
+Для `.m4a`, `.aac`, `.mp4`, `.docx`, `.pdf` нужно добавить отдельный шаг конвертации или извлечения аудио перед распознаванием.

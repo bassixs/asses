@@ -62,10 +62,25 @@ class Settings(BaseSettings):
 
     speechkit_stt_url: str = "https://stt.api.cloud.yandex.net/speech/v1/stt:recognize"
     speechkit_async_stt_url: str = "https://transcribe.api.cloud.yandex.net/speech/stt/v2/longRunningRecognize"
+    speechkit_async_stt_v3_url: str = Field(
+        default="https://stt.api.cloud.yandex.net/stt/v3/recognizeFileAsync",
+        validation_alias="SPEECHKIT_ASYNC_STT_V3_URL",
+    )
+    speechkit_async_stt_v3_result_url: str = Field(
+        default="https://stt.api.cloud.yandex.net/stt/v3/getRecognition",
+        validation_alias="SPEECHKIT_ASYNC_STT_V3_RESULT_URL",
+    )
     yandex_operation_url: str = "https://operation.api.cloud.yandex.net/operations"
     yandex_gpt_url: str = "https://llm.api.cloud.yandex.net/foundationModels/v1/completion"
     yandex_gpt_model_uri: str | None = Field(default=None, validation_alias="YANDEX_GPT_MODEL_URI")
     speechkit_sync_max_bytes: int = Field(default=1_000_000, validation_alias="SPEECHKIT_SYNC_MAX_BYTES")
+    speechkit_async_api_version: str = Field(default="v3", validation_alias="SPEECHKIT_ASYNC_API_VERSION")
+    speechkit_v3_model: str = Field(default="general:rc", validation_alias="SPEECHKIT_V3_MODEL")
+    speechkit_v3_enable_speaker_labeling: bool = Field(
+        default=True,
+        validation_alias="SPEECHKIT_V3_ENABLE_SPEAKER_LABELING",
+    )
+    speechkit_v3_fallback_to_v2: bool = Field(default=True, validation_alias="SPEECHKIT_V3_FALLBACK_TO_V2")
     speechkit_async_poll_interval_seconds: int = Field(
         default=10,
         validation_alias="SPEECHKIT_ASYNC_POLL_INTERVAL_SECONDS",

@@ -33,7 +33,9 @@ https://github.com/bassixs/asses.git
   - Excel-блокнотов наблюдателя `.xlsx`.
 - Добавлена интеграция с Yandex SpeechKit:
   - короткие Ogg Opus / raw LPCM файлы идут через sync API v1;
-  - длинные интервью и MP3 идут через Object Storage + async SpeechKit API v2.
+  - длинные интервью и MP3 идут через Object Storage + async SpeechKit API v3;
+  - для длинных аудио включен speaker labeling;
+  - async SpeechKit API v2 оставлен как fallback.
 - Добавлена интеграция с YandexGPT:
   - используется structured output через JSON schema;
   - ответ валидируется Pydantic-моделью;
@@ -160,7 +162,8 @@ data/uploads/
 
 8. `bot/services/speechkit.py` выбирает способ распознавания:
    - если файл маленький и формат подходит, используется sync SpeechKit v1;
-   - если файл длинный или MP3, файл загружается в Object Storage и запускается async SpeechKit v2.
+   - если файл длинный или MP3, файл загружается в Object Storage и запускается async SpeechKit v3;
+   - если v3 недоступен или вернул ошибку, бот может откатиться на async SpeechKit v2.
 9. SpeechKit возвращает транскрипт.
 10. `bot/services/speechkit.py` очищает явные повторы и почти одинаковые соседние фразы.
 11. Очищенный транскрипт сохраняется в таблицу `interview_records`.
