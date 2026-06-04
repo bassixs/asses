@@ -245,7 +245,7 @@ def _deduplicate_segments(segments: list[TranscriptSegment]) -> list[TranscriptS
         if not normalized:
             continue
 
-        duplicate_index = _find_recent_duplicate(cleaned, normalized, threshold=threshold)
+        duplicate_index = _find_recent_duplicate(cleaned, segment, normalized, threshold=threshold)
         if duplicate_index is None:
             cleaned.append(segment)
             continue
@@ -259,6 +259,7 @@ def _deduplicate_segments(segments: list[TranscriptSegment]) -> list[TranscriptS
 
 def _find_recent_duplicate(
     segments: list[TranscriptSegment],
+    segment: TranscriptSegment,
     normalized_text: str,
     *,
     threshold: float,
@@ -268,6 +269,8 @@ def _find_recent_duplicate(
         candidate = _normalize_for_dedup(segments[index].text)
         if not candidate:
             continue
+        if _is_same_timestamp_duplicate(segments[index], segment, candidate, normalized_text):
+            return index
         if candidate == normalized_text:
             return index
         if len(normalized_text) > 40 and (normalized_text in candidate or candidate in normalized_text):
@@ -275,6 +278,21 @@ def _find_recent_duplicate(
         if _similarity(candidate, normalized_text) >= threshold:
             return index
     return None
+
+
+def _is_same_timestamp_duplicate(
+    existing: TranscriptSegment,
+    current: TranscriptSegment,
+    existing_normalized: str,
+    current_normalized: str,
+) -> bool:
+    if not existing.timestamp or existing.timestamp != current.timestamp:
+        return False
+    if len(existing_normalized) < 25 or len(current_normalized) < 25:
+        return existing_normalized == current_normalized
+    if existing_normalized in current_normalized or current_normalized in existing_normalized:
+        return True
+    return _similarity(existing_normalized, current_normalized) >= 0.55
 
 
 def _format_transcript_segments(segments: list[TranscriptSegment]) -> str:
