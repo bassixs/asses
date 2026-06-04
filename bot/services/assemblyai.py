@@ -3,6 +3,7 @@ from __future__ import annotations
 import asyncio
 import logging
 from pathlib import Path
+import socket
 from typing import Any
 
 import aiohttp
@@ -22,12 +23,16 @@ async def transcribe_file_assemblyai(file_path: Path) -> str:
     if not file_path.exists():
         raise AssemblyAIError(f"File not found: {file_path}")
 
-    timeout = aiohttp.ClientTimeout(total=None, sock_connect=60, sock_read=300)
+    timeout = aiohttp.ClientTimeout(total=None, sock_connect=120, sock_read=300)
     headers = {"Authorization": settings.assemblyai_api_key}
-    async with aiohttp.ClientSession(timeout=timeout, headers=headers) as session:
-        audio_url = await _upload_file(session, file_path)
-        transcript_id = await _submit_transcript(session, audio_url)
-        payload = await _poll_transcript(session, transcript_id)
+    connector = aiohttp.TCPConnector(family=socket.AF_INET if settings.assemblyai_force_ipv4 else socket.AF_UNSPEC)
+    try:
+        async with aiohttp.ClientSession(timeout=timeout, headers=headers, connector=connector) as session:
+            audio_url = await _upload_file(session, file_path)
+            transcript_id = await _submit_transcript(session, audio_url)
+            payload = await _poll_transcript(session, transcript_id)
+    except (aiohttp.ClientError, asyncio.TimeoutError) as exc:
+        raise AssemblyAIError(f"AssemblyAI network error: {exc}") from exc
 
     transcript = _format_transcript(payload)
     if not transcript:

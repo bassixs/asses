@@ -118,6 +118,7 @@ class Settings(BaseSettings):
         validation_alias="ASSEMBLYAI_POLL_INTERVAL_SECONDS",
     )
     assemblyai_timeout_seconds: int = Field(default=7200, validation_alias="ASSEMBLYAI_TIMEOUT_SECONDS")
+    assemblyai_force_ipv4: bool = Field(default=True, validation_alias="ASSEMBLYAI_FORCE_IPV4")
     admin_bot_password: str = Field(default="1172", validation_alias="ADMIN_BOT_PASSWORD")
     competencies: list[str] = Field(default_factory=lambda: DEFAULT_COMPETENCIES.copy())
 
