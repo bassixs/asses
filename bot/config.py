@@ -97,6 +97,14 @@ class Settings(BaseSettings):
         default=0.88,
         validation_alias="SPEECHKIT_DEDUP_SIMILARITY_THRESHOLD",
     )
+    transcript_export_include_timestamps: bool = Field(
+        default=False,
+        validation_alias="TRANSCRIPT_EXPORT_INCLUDE_TIMESTAMPS",
+    )
+    transcript_export_merge_same_role: bool = Field(
+        default=True,
+        validation_alias="TRANSCRIPT_EXPORT_MERGE_SAME_ROLE",
+    )
     admin_bot_password: str = Field(default="1172", validation_alias="ADMIN_BOT_PASSWORD")
     competencies: list[str] = Field(default_factory=lambda: DEFAULT_COMPETENCIES.copy())
 

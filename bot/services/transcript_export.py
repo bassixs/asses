@@ -75,13 +75,13 @@ async def _build_role_labeled_transcript(transcript: str) -> str:
             )
             for line in lines
         ]
-        return "\n".join(_format_role_segment(segment) for segment in _smooth_role_segments(segments)).strip()
+        return _format_role_segments(_prepare_export_segments(segments))
 
     labeled_segments: list[RoleSegment] = []
     for chunk in _chunk_lines(lines):
         labeled_segments.extend(await _label_role_chunk(chunk))
 
-    return "\n".join(_format_role_segment(segment) for segment in _smooth_role_segments(labeled_segments)).strip()
+    return _format_role_segments(_prepare_export_segments(labeled_segments))
 
 
 async def _label_role_chunk(lines: list[InputTranscriptLine]) -> list[RoleSegment]:
@@ -225,9 +225,59 @@ def _build_speaker_map_user_prompt(lines: list[InputTranscriptLine], speakers: l
     )
 
 
+def _prepare_export_segments(segments: list[RoleSegment]) -> list[RoleSegment]:
+    prepared = _smooth_role_segments(segments)
+    if settings.transcript_export_merge_same_role:
+        prepared = _merge_consecutive_role_segments(prepared)
+    return prepared
+
+
+def _format_role_segments(segments: list[RoleSegment]) -> str:
+    return "\n\n".join(_format_role_segment(segment) for segment in segments if segment.text.strip()).strip()
+
+
 def _format_role_segment(segment: RoleSegment) -> str:
-    timestamp = f"[{segment.timestamp}] " if segment.timestamp else ""
-    return f"{timestamp}{segment.role}: {segment.text.strip()}"
+    timestamp = f"[{segment.timestamp}] " if settings.transcript_export_include_timestamps and segment.timestamp else ""
+    role = segment.role.capitalize()
+    return f"{timestamp}{role}: {segment.text.strip()}"
+
+
+def _merge_consecutive_role_segments(segments: list[RoleSegment]) -> list[RoleSegment]:
+    merged: list[RoleSegment] = []
+    for segment in segments:
+        text = segment.text.strip()
+        if not text:
+            continue
+        if merged and merged[-1].role == segment.role:
+            previous = merged[-1]
+            merged[-1] = RoleSegment(
+                role=previous.role,
+                timestamp=previous.timestamp,
+                text=_join_segment_text(previous.text, text),
+            )
+            continue
+        merged.append(RoleSegment(role=segment.role, timestamp=segment.timestamp, text=text))
+    return merged
+
+
+def _join_segment_text(previous: str, current: str) -> str:
+    previous = previous.strip()
+    current = current.strip()
+    previous_normalized = _normalize_for_overlap(previous)
+    current_normalized = _normalize_for_overlap(current)
+    if not current_normalized:
+        return previous
+    if current_normalized in previous_normalized:
+        return previous
+    if previous_normalized and previous_normalized in current_normalized:
+        return current
+    return f"{previous} {current}".strip()
+
+
+def _normalize_for_overlap(text: str) -> str:
+    text = text.lower().replace("ё", "е")
+    text = re.sub(r"[^\w\s]+", " ", text, flags=re.UNICODE)
+    return re.sub(r"\s+", " ", text).strip()
 
 
 def _smooth_role_segments(segments: list[RoleSegment]) -> list[RoleSegment]:
