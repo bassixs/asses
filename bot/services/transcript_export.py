@@ -67,22 +67,21 @@ async def _build_role_labeled_transcript(transcript: str) -> str:
 
     speaker_role_map = await _map_source_speakers_to_roles(lines)
     if speaker_role_map:
-        return "\n".join(
-            _format_role_segment(
-                RoleSegment(
-                    role=speaker_role_map.get(line.source_speaker or "", "ведущий"),
-                    timestamp=line.timestamp,
-                    text=line.text,
-                )
+        segments = [
+            RoleSegment(
+                role=speaker_role_map.get(line.source_speaker or "", "ведущий"),
+                timestamp=line.timestamp,
+                text=line.text,
             )
             for line in lines
-        ).strip()
+        ]
+        return "\n".join(_format_role_segment(segment) for segment in _smooth_role_segments(segments)).strip()
 
     labeled_segments: list[RoleSegment] = []
     for chunk in _chunk_lines(lines):
         labeled_segments.extend(await _label_role_chunk(chunk))
 
-    return "\n".join(_format_role_segment(segment) for segment in labeled_segments).strip()
+    return "\n".join(_format_role_segment(segment) for segment in _smooth_role_segments(labeled_segments)).strip()
 
 
 async def _label_role_chunk(lines: list[InputTranscriptLine]) -> list[RoleSegment]:
@@ -113,7 +112,7 @@ async def _label_role_chunk(lines: list[InputTranscriptLine]) -> list[RoleSegmen
             RoleSegment(
                 role=segment.role,
                 timestamp=source.timestamp,
-                text=segment.text.strip() or source.text,
+                text=source.text,
             )
         )
     return segments
@@ -231,6 +230,33 @@ def _format_role_segment(segment: RoleSegment) -> str:
     return f"{timestamp}{segment.role}: {segment.text.strip()}"
 
 
+def _smooth_role_segments(segments: list[RoleSegment]) -> list[RoleSegment]:
+    if len(segments) < 3:
+        return segments
+
+    smoothed = segments[:]
+    for index in range(1, len(segments) - 1):
+        previous = smoothed[index - 1]
+        current = smoothed[index]
+        next_segment = segments[index + 1]
+        if previous.role != next_segment.role or current.role == previous.role:
+            continue
+        if _is_short_bridge_segment(current) or _looks_like_role_leak(current, previous.role):
+            smoothed[index] = RoleSegment(role=previous.role, timestamp=current.timestamp, text=current.text)
+    return smoothed
+
+
+def _is_short_bridge_segment(segment: RoleSegment) -> bool:
+    return len(segment.text.split()) <= 4
+
+
+def _looks_like_role_leak(segment: RoleSegment, surrounding_role: RoleName) -> bool:
+    text = segment.text.lower()
+    if surrounding_role == "ведущий":
+        return _looks_like_leading_text(text)
+    return _looks_like_participant_text(text)
+
+
 def _heuristic_speaker_role_map(lines: list[InputTranscriptLine], speakers: list[str]) -> dict[str, RoleName]:
     scores: dict[str, int] = {speaker: 0 for speaker in speakers}
     for line in lines:
@@ -313,8 +339,8 @@ def _role_breakdown_system_prompt() -> str:
 1. В этом упражнении всегда только две роли: "ведущий" и "участник".
 2. Верни ровно столько segments, сколько строк получил пользователь.
 3. Не объединяй строки, не пропускай строки, не добавляй новые строки.
-4. Для каждой строки определи role и аккуратно приведи text в читаемый вид.
-5. Можно исправлять очевидные ошибки распознавания, пунктуацию, лишние повторы слов и падежи, но нельзя менять смысл или добавлять новые факты.
+4. Для каждой строки определи только role.
+5. Не исправляй, не переписывай и не переформулируй text. Верни text как во входной строке.
 6. Таймкод сохраняй из входной строки.
 7. "ведущий" обычно приветствует, задает вопросы, объясняет упражнение, дает инструкции, уточняет, завершает этап.
 8. "участник" обычно отвечает от первого лица, говорит о себе, своих задачах, решениях, трудностях, целях, мотивации.

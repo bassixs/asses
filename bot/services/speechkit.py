@@ -427,7 +427,11 @@ def _extract_v3_segment(event: dict[str, Any], speech_payload: dict[str, Any]) -
     text = _clean_transcript_text(str(alternative.get("text", "")).strip())
     if not text:
         return None
-    timestamp = _format_v3_timestamp(alternative.get("startTimeMs") or speech_payload.get("startTimeMs"))
+    timestamp = _format_v3_timestamp(
+        alternative.get("startTimeMs")
+        or speech_payload.get("startTimeMs")
+        or _first_v3_word_start_time(alternative)
+    )
     speaker_tag = _find_speaker_tag(event, speech_payload, alternative)
     return TranscriptSegment(text=text, timestamp=timestamp, speaker_tag=speaker_tag)
 
@@ -436,9 +440,9 @@ def _find_speaker_tag(*items: Any) -> str | None:
     for item in items:
         if not isinstance(item, dict):
             continue
-        for key in ("speakerTag", "speaker_tag"):
+        for key in ("speakerTag", "speaker_tag", "channelTag", "channel_tag"):
             value = item.get(key)
-            if value:
+            if value is not None and str(value) != "":
                 return str(value)
         words = item.get("words") or []
         if words and isinstance(words[0], dict):
@@ -458,6 +462,16 @@ def _format_v3_timestamp(value: Any) -> str | None:
     minutes = int(seconds // 60)
     rest = int(seconds % 60)
     return f"{minutes:02d}:{rest:02d}"
+
+
+def _first_v3_word_start_time(alternative: dict[str, Any]) -> Any:
+    words = alternative.get("words") or []
+    if not words:
+        return None
+    first_word = words[0]
+    if not isinstance(first_word, dict):
+        return None
+    return first_word.get("startTimeMs") or first_word.get("start_time_ms")
 
 
 def normalize_transcript_text(transcript: str) -> str:
@@ -535,9 +549,13 @@ def _is_same_timestamp_duplicate(
 ) -> bool:
     if not existing.timestamp or existing.timestamp != current.timestamp:
         return False
+    if existing.speaker_tag and current.speaker_tag and existing.speaker_tag != current.speaker_tag:
+        return False
     if len(existing_normalized) < 25 or len(current_normalized) < 25:
         return existing_normalized == current_normalized
     if existing_normalized in current_normalized or current_normalized in existing_normalized:
+        return True
+    if _word_overlap(existing_normalized, current_normalized) >= 0.65:
         return True
     return _similarity(existing_normalized, current_normalized) >= 0.55
 
@@ -584,6 +602,14 @@ def _normalize_for_dedup(text: str) -> str:
 
 def _similarity(left: str, right: str) -> float:
     return SequenceMatcher(a=left, b=right, autojunk=False).ratio()
+
+
+def _word_overlap(left: str, right: str) -> float:
+    left_words = set(left.split())
+    right_words = set(right.split())
+    if not left_words or not right_words:
+        return 0.0
+    return len(left_words & right_words) / min(len(left_words), len(right_words))
 
 
 def _format_segment_timestamp(chunk: dict[str, Any], alternative: dict[str, Any]) -> str | None:
