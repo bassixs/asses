@@ -24,6 +24,7 @@ class InterviewRecord(Base):
     file_type: Mapped[str] = mapped_column(String(32))
     file_path: Mapped[str | None] = mapped_column(String(1024), nullable=True)
     transcript_file_path: Mapped[str | None] = mapped_column(String(1024), nullable=True)
+    stt_provider: Mapped[str | None] = mapped_column(String(32), nullable=True)
     transcript: Mapped[str] = mapped_column(Text)
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True),
