@@ -11,7 +11,6 @@ from sqlalchemy import desc, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from bot.config import settings
-from bot.keyboards import stt_provider_keyboard
 from bot.models import InterviewRecord, MediaProcessingJob
 from bot.services.speechkit import normalize_transcript_text
 from bot.services.telegram_files import (
@@ -62,68 +61,15 @@ async def handle_interview_file(message: Message, session: AsyncSession) -> None
         file_type=file_type,
         file_name=file_name,
         file_size=file_size,
-        status="awaiting_provider",
+        status="queued",
     )
     session.add(job)
     await session.commit()
     await session.refresh(job)
 
-    logger.info(
-        "Media job id=%s is waiting for STT provider file_type=%s user_id=%s chat_id=%s",
-        job.id,
-        file_type,
-        job.user_id,
-        job.chat_id,
-    )
+    logger.info("Queued media job id=%s file_type=%s user_id=%s chat_id=%s", job.id, file_type, job.user_id, job.chat_id)
     await message.answer(
-        f"Задача #{job.id}: файл получен.\n"
-        "Выберите движок для тестовой расшифровки:",
-        reply_markup=stt_provider_keyboard(job.id),
-    )
-
-
-@router.callback_query(F.data.startswith("stt_provider:"))
-async def callback_stt_provider(callback: CallbackQuery, session: AsyncSession) -> None:
-    if callback.from_user is None or callback.message is None or not callback.data:
-        await callback.answer("Не удалось обработать запрос", show_alert=True)
-        return
-
-    try:
-        _, raw_job_id, provider = callback.data.split(":", maxsplit=2)
-        job_id = int(raw_job_id)
-    except ValueError:
-        await callback.answer("Некорректная команда", show_alert=True)
-        return
-
-    if provider not in {"yandex", "assemblyai"}:
-        await callback.answer("Неизвестный провайдер", show_alert=True)
-        return
-    if provider == "assemblyai" and not settings.assemblyai_api_key:
-        await callback.answer("AssemblyAI API key не настроен на сервере", show_alert=True)
-        return
-
-    job = await session.scalar(
-        select(MediaProcessingJob).where(
-            MediaProcessingJob.id == job_id,
-            MediaProcessingJob.user_id == callback.from_user.id,
-        )
-    )
-    if job is None:
-        await callback.answer("Задача не найдена", show_alert=True)
-        return
-    if job.status != "awaiting_provider":
-        await callback.answer("Провайдер для этой задачи уже выбран", show_alert=True)
-        return
-
-    job.stt_provider = provider
-    job.status = "queued"
-    await session.commit()
-
-    provider_name = "AssemblyAI" if provider == "assemblyai" else "Yandex"
-    await callback.answer(f"Выбрано: {provider_name}")
-    await callback.message.edit_reply_markup(reply_markup=None)
-    await callback.message.answer(
-        f"Задача #{job.id}: выбрано {provider_name}, файл поставлен в очередь.\n"
+        f"Задача #{job.id}: файл получен и поставлен в очередь.\n"
         "Я пришлю статусы обработки и сообщение с кнопкой скачивания после расшифровки."
     )
 
@@ -180,8 +126,7 @@ async def cmd_my_records(message: Message, session: AsyncSession) -> None:
 
     lines = ["Последние расшифрованные записи:"]
     for record in records:
-        provider = record.stt_provider or "yandex"
-        lines.append(f"#{record.id}: {record.file_type}, {provider}, {len(record.transcript)} символов")
+        lines.append(f"#{record.id}: {record.file_type}, {len(record.transcript)} символов")
     await message.answer(escape("\n".join(lines), quote=False))
 
 

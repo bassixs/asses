@@ -105,20 +105,6 @@ class Settings(BaseSettings):
         default=True,
         validation_alias="TRANSCRIPT_EXPORT_MERGE_SAME_ROLE",
     )
-    assemblyai_api_key: str | None = Field(default=None, validation_alias="ASSEMBLYAI_API_KEY")
-    assemblyai_base_url: str = Field(default="https://api.assemblyai.com", validation_alias="ASSEMBLYAI_BASE_URL")
-    assemblyai_language_code: str | None = Field(default="ru", validation_alias="ASSEMBLYAI_LANGUAGE_CODE")
-    assemblyai_speech_models: str = Field(
-        default="universal-3-pro,universal-2",
-        validation_alias="ASSEMBLYAI_SPEECH_MODELS",
-    )
-    assemblyai_speaker_labels: bool = Field(default=True, validation_alias="ASSEMBLYAI_SPEAKER_LABELS")
-    assemblyai_poll_interval_seconds: int = Field(
-        default=8,
-        validation_alias="ASSEMBLYAI_POLL_INTERVAL_SECONDS",
-    )
-    assemblyai_timeout_seconds: int = Field(default=7200, validation_alias="ASSEMBLYAI_TIMEOUT_SECONDS")
-    assemblyai_force_ipv4: bool = Field(default=True, validation_alias="ASSEMBLYAI_FORCE_IPV4")
     admin_bot_password: str = Field(default="1172", validation_alias="ADMIN_BOT_PASSWORD")
     competencies: list[str] = Field(default_factory=lambda: DEFAULT_COMPETENCIES.copy())
 
@@ -132,10 +118,6 @@ class Settings(BaseSettings):
     @property
     def resolved_yandex_gpt_model_uri(self) -> str:
         return self.yandex_gpt_model_uri or f"gpt://{self.yandex_folder_id}/yandexgpt/rc"
-
-    @property
-    def assemblyai_speech_model_list(self) -> list[str]:
-        return [model.strip() for model in self.assemblyai_speech_models.split(",") if model.strip()]
 
 
 @lru_cache

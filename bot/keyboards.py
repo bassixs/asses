@@ -23,17 +23,6 @@ def transcript_actions_keyboard(record_id: int) -> InlineKeyboardMarkup:
     )
 
 
-def stt_provider_keyboard(job_id: int) -> InlineKeyboardMarkup:
-    return InlineKeyboardMarkup(
-        inline_keyboard=[
-            [
-                InlineKeyboardButton(text="Yandex", callback_data=f"stt_provider:{job_id}:yandex"),
-                InlineKeyboardButton(text="AssemblyAI", callback_data=f"stt_provider:{job_id}:assemblyai"),
-            ],
-        ]
-    )
-
-
 def assessment_actions_keyboard(record_id: int) -> InlineKeyboardMarkup:
     return InlineKeyboardMarkup(
         inline_keyboard=[
