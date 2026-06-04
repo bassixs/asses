@@ -126,7 +126,7 @@ async def _map_source_speakers_to_roles(lines: list[InputTranscriptLine]) -> dic
     if set(direct_roles.values()) == {"ведущий", "участник"}:
         return direct_roles
     if len(speakers) > 2:
-        speakers = speakers[:2]
+        speakers = _select_primary_speakers(lines, speakers)
 
     try:
         raw = await complete_json(
@@ -213,7 +213,7 @@ def _build_role_chunk_user_prompt(lines: list[InputTranscriptLine]) -> str:
 def _build_speaker_map_user_prompt(lines: list[InputTranscriptLine], speakers: list[str]) -> str:
     examples: list[str] = []
     for speaker in speakers:
-        speaker_lines = [line for line in lines if line.source_speaker == speaker][:16]
+        speaker_lines = _sample_speaker_lines(lines, speaker=speaker, max_lines=18)
         examples.append(f"Спикер {speaker}:")
         for line in speaker_lines:
             timestamp = f"[{line.timestamp}] " if line.timestamp else ""
@@ -223,6 +223,45 @@ def _build_speaker_map_user_prompt(lines: list[InputTranscriptLine], speakers: l
         f"Доступные speakerTag: {', '.join(speakers)}\n\n"
         + "\n".join(examples)
     )
+
+
+def _select_primary_speakers(lines: list[InputTranscriptLine], speakers: list[str]) -> list[str]:
+    stats: dict[str, tuple[int, int]] = {speaker: (0, 0) for speaker in speakers}
+    for line in lines:
+        if not line.source_speaker or line.source_speaker not in stats:
+            continue
+        count, chars = stats[line.source_speaker]
+        stats[line.source_speaker] = (count + 1, chars + len(line.text))
+    return sorted(speakers, key=lambda speaker: (stats[speaker][1], stats[speaker][0]), reverse=True)[:2]
+
+
+def _sample_speaker_lines(
+    lines: list[InputTranscriptLine],
+    *,
+    speaker: str,
+    max_lines: int,
+) -> list[InputTranscriptLine]:
+    speaker_lines = [line for line in lines if line.source_speaker == speaker]
+    if len(speaker_lines) <= max_lines:
+        return speaker_lines
+
+    window = max(1, max_lines // 3)
+    middle_start = max(0, (len(speaker_lines) // 2) - (window // 2))
+    sampled = (
+        speaker_lines[:window]
+        + speaker_lines[middle_start : middle_start + window]
+        + speaker_lines[-window:]
+    )
+
+    result: list[InputTranscriptLine] = []
+    seen: set[tuple[str | None, str]] = set()
+    for line in sampled:
+        key = (line.timestamp, line.text)
+        if key in seen:
+            continue
+        seen.add(key)
+        result.append(line)
+    return result[:max_lines]
 
 
 def _prepare_export_segments(segments: list[RoleSegment]) -> list[RoleSegment]:

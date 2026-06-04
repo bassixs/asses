@@ -513,7 +513,11 @@ def _deduplicate_segments(segments: list[TranscriptSegment]) -> list[TranscriptS
 
         existing = cleaned[duplicate_index]
         if len(_normalize_for_dedup(segment.text)) > len(_normalize_for_dedup(existing.text)):
-            cleaned[duplicate_index] = TranscriptSegment(text=segment.text, timestamp=existing.timestamp or segment.timestamp)
+            cleaned[duplicate_index] = TranscriptSegment(
+                text=segment.text,
+                timestamp=existing.timestamp or segment.timestamp,
+                speaker_tag=existing.speaker_tag or segment.speaker_tag,
+            )
 
     return cleaned
 
