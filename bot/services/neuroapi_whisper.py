@@ -3,6 +3,7 @@ from __future__ import annotations
 import asyncio
 import logging
 from pathlib import Path
+import socket
 from typing import Any
 
 import aiohttp
@@ -25,8 +26,9 @@ async def transcribe_file_neuroapi_whisper(file_path: Path) -> str:
 
     timeout = aiohttp.ClientTimeout(total=settings.neuroapi_timeout_seconds)
     headers = {"Authorization": f"Bearer {settings.neuroapi_api_key}"}
+    connector = aiohttp.TCPConnector(family=socket.AF_INET if settings.neuroapi_force_ipv4 else socket.AF_UNSPEC)
     try:
-        async with aiohttp.ClientSession(timeout=timeout, headers=headers) as session:
+        async with aiohttp.ClientSession(timeout=timeout, headers=headers, connector=connector) as session:
             payload = await _send_transcription_request(session, file_path)
     except (aiohttp.ClientError, asyncio.TimeoutError) as exc:
         raise NeuroAPIWhisperError(f"NeuroAPI Whisper network error: {exc}") from exc

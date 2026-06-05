@@ -111,6 +111,7 @@ class Settings(BaseSettings):
     neuroapi_language: str | None = Field(default="ru", validation_alias="NEUROAPI_LANGUAGE")
     neuroapi_response_format: str = Field(default="json", validation_alias="NEUROAPI_RESPONSE_FORMAT")
     neuroapi_timeout_seconds: int = Field(default=1800, validation_alias="NEUROAPI_TIMEOUT_SECONDS")
+    neuroapi_force_ipv4: bool = Field(default=True, validation_alias="NEUROAPI_FORCE_IPV4")
     admin_bot_password: str = Field(default="1172", validation_alias="ADMIN_BOT_PASSWORD")
     competencies: list[str] = Field(default_factory=lambda: DEFAULT_COMPETENCIES.copy())
 
