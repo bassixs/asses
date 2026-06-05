@@ -36,6 +36,10 @@ https://github.com/bassixs/asses.git
   - длинные интервью и MP3 идут через Object Storage + async SpeechKit API v3;
   - для длинных аудио включен speaker labeling;
   - async SpeechKit API v2 оставлен как fallback.
+- Добавлен тестовый выбор STT-провайдера прямо в Telegram:
+  - после загрузки аудио бот показывает кнопки `Yandex` и `NeuroAPI Whisper`;
+  - выбранный провайдер сохраняется в задаче обработки и записи;
+  - NeuroAPI Whisper использует OpenAI-compatible endpoint `/audio/transcriptions`.
 - Добавлена интеграция с YandexGPT:
   - используется structured output через JSON schema;
   - ответ валидируется Pydantic-моделью;
@@ -73,8 +77,8 @@ https://github.com/bassixs/asses.git
   - YandexGPT сформировал оценку;
   - бот отправил результат в Telegram.
 - Добавлена очередь задач обработки медиа:
-  - handler Telegram быстро создает задачу в БД;
-  - отдельный worker скачивает файл, запускает SpeechKit и сохраняет результат;
+  - handler Telegram быстро создает задачу в БД и ждет выбора STT-провайдера;
+  - отдельный worker скачивает файл, запускает выбранный STT-провайдер и сохраняет результат;
   - при перезапуске задачи в статусе `processing` возвращаются в очередь;
   - бот присылает статусы обработки в Telegram.
 - Добавлен `.txt` файл расшифровки:
@@ -96,6 +100,7 @@ https://github.com/bassixs/asses.git
 Python 3.11+
 aiogram 3.x
 Yandex SpeechKit
+NeuroAPI Whisper
 YandexGPT
 Yandex Object Storage
 SQLAlchemy 2.0

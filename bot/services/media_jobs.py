@@ -13,6 +13,7 @@ from sqlalchemy import select
 from bot.database import async_session_maker
 from bot.keyboards import transcript_actions_keyboard
 from bot.models import InterviewRecord, MediaProcessingJob
+from bot.services.neuroapi_whisper import NeuroAPIWhisperError, transcribe_file_neuroapi_whisper
 from bot.services.speechkit import SpeechKitError, transcribe_file
 from bot.services.telegram_files import download_telegram_file
 from bot.services.transcript_export import build_transcript_text_file
@@ -29,6 +30,7 @@ class ClaimedMediaJob:
     file_unique_id: str | None
     file_type: str
     file_name: str | None
+    stt_provider: str
 
 
 def start_media_job_worker(bot: Bot) -> asyncio.Task[None]:
@@ -74,6 +76,7 @@ async def _claim_next_job() -> ClaimedMediaJob | None:
             file_unique_id=job.file_unique_id,
             file_type=job.file_type,
             file_name=job.file_name,
+            stt_provider=job.stt_provider or "yandex",
         )
 
 
@@ -103,8 +106,9 @@ async def _process_job(bot: Bot, job_id: int) -> None:
         await bot.send_message(job.chat_id, f"Задача #{job.id}: скачиваю файл из Telegram...")
         local_path = await download_telegram_file(bot, job.file_id, job.file_type, job.file_name)
 
-        await bot.send_message(job.chat_id, f"Задача #{job.id}: отправляю аудио на расшифровку...")
-        transcript = await transcribe_file(local_path)
+        provider_name = _provider_name(job.stt_provider)
+        await bot.send_message(job.chat_id, f"Задача #{job.id}: отправляю аудио на расшифровку через {provider_name}...")
+        transcript = await _transcribe_with_provider(local_path, job.stt_provider)
 
         record_id = await _create_record(job, local_path, transcript)
         transcript_path = await build_transcript_text_file(transcript=transcript, record_id=record_id)
@@ -112,7 +116,7 @@ async def _process_job(bot: Bot, job_id: int) -> None:
 
         await bot.send_message(
             job.chat_id,
-            f"Задача #{job.id}: расшифровано.\n"
+            f"Задача #{job.id}: расшифровано через {provider_name}.\n"
             f"ID записи: {record_id}\n"
             f"Напишите /assess {record_id} для оценки по компетенциям.",
             reply_markup=transcript_actions_keyboard(record_id),
@@ -121,6 +125,10 @@ async def _process_job(bot: Bot, job_id: int) -> None:
         await _mark_failed(job_id, str(exc))
         logger.exception("SpeechKit failed for media job id=%s", job_id)
         await bot.send_message(job.chat_id, f"Задача #{job.id}: не удалось расшифровать запись: {escape(str(exc), quote=False)}")
+    except NeuroAPIWhisperError as exc:
+        await _mark_failed(job_id, str(exc))
+        logger.exception("NeuroAPI Whisper failed for media job id=%s", job_id)
+        await bot.send_message(job.chat_id, f"Задача #{job.id}: NeuroAPI Whisper не смог расшифровать запись: {escape(str(exc), quote=False)}")
     except Exception as exc:
         await _mark_failed(job_id, str(exc))
         logger.exception("Media job failed id=%s", job_id)
@@ -136,6 +144,7 @@ async def _create_record(job: ClaimedMediaJob, local_path: Path, transcript: str
             file_unique_id=job.file_unique_id,
             file_type=job.file_type,
             file_path=str(local_path),
+            stt_provider=job.stt_provider,
             transcript=transcript,
         )
         session.add(record)
@@ -170,7 +179,20 @@ async def _load_claimed_job(job_id: int) -> ClaimedMediaJob | None:
             file_unique_id=job.file_unique_id,
             file_type=job.file_type,
             file_name=job.file_name,
+            stt_provider=job.stt_provider or "yandex",
         )
+
+
+async def _transcribe_with_provider(local_path: Path, provider: str) -> str:
+    if provider == "neuroapi":
+        return await transcribe_file_neuroapi_whisper(local_path)
+    return await transcribe_file(local_path)
+
+
+def _provider_name(provider: str) -> str:
+    if provider == "neuroapi":
+        return "NeuroAPI Whisper"
+    return "Yandex"
 
 
 async def _mark_failed(job_id: int, error_message: str) -> None:

@@ -105,6 +105,12 @@ class Settings(BaseSettings):
         default=True,
         validation_alias="TRANSCRIPT_EXPORT_MERGE_SAME_ROLE",
     )
+    neuroapi_api_key: str | None = Field(default=None, validation_alias="NEUROAPI_API_KEY")
+    neuroapi_base_url: str = Field(default="https://neuroapi.host/v1", validation_alias="NEUROAPI_BASE_URL")
+    neuroapi_whisper_model: str = Field(default="whisper-1", validation_alias="NEUROAPI_WHISPER_MODEL")
+    neuroapi_language: str | None = Field(default="ru", validation_alias="NEUROAPI_LANGUAGE")
+    neuroapi_response_format: str = Field(default="json", validation_alias="NEUROAPI_RESPONSE_FORMAT")
+    neuroapi_timeout_seconds: int = Field(default=1800, validation_alias="NEUROAPI_TIMEOUT_SECONDS")
     admin_bot_password: str = Field(default="1172", validation_alias="ADMIN_BOT_PASSWORD")
     competencies: list[str] = Field(default_factory=lambda: DEFAULT_COMPETENCIES.copy())
 
