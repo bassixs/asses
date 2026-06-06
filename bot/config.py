@@ -151,6 +151,9 @@ class Settings(BaseSettings):
     analysis_llm_json_mode: bool = Field(default=True, validation_alias="ANALYSIS_LLM_JSON_MODE")
     notebook_analysis_batch_size: int = Field(default=20, validation_alias="NOTEBOOK_ANALYSIS_BATCH_SIZE")
     analysis_llm_max_concurrency: int = Field(default=5, validation_alias="ANALYSIS_LLM_MAX_CONCURRENCY")
+    pdf_export_enabled: bool = Field(default=True, validation_alias="PDF_EXPORT_ENABLED")
+    libreoffice_binary: str = Field(default="soffice", validation_alias="LIBREOFFICE_BINARY")
+    pdf_export_timeout_seconds: int = Field(default=120, validation_alias="PDF_EXPORT_TIMEOUT_SECONDS")
     admin_bot_password: str = Field(default="1172", validation_alias="ADMIN_BOT_PASSWORD")
     competencies: list[str] = Field(default_factory=lambda: DEFAULT_COMPETENCIES.copy())
 

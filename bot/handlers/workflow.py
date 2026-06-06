@@ -26,6 +26,7 @@ from bot.models import (
 )
 from bot.services.development_advice import enrich_competencies_with_advice
 from bot.services.llm_json import LLMJSONError
+from bot.services.pdf_export import convert_to_pdf
 from bot.services.observer_notebook import (
     NotebookProcessingError,
     analyze_notebook_indicators,
@@ -374,7 +375,7 @@ async def cmd_generate_report(message: Message, session: AsyncSession) -> None:
     )
     session.add(report)
     await session.commit()
-    await message.answer_document(FSInputFile(output_path), caption=f"Отчет участника #{participant.id} сформирован.")
+    await _send_docx_with_pdf(message, output_path, caption=f"Отчет участника #{participant.id} сформирован.")
 
 
 @router.message(Command("generate_ipr"))
@@ -419,7 +420,18 @@ async def cmd_generate_ipr(message: Message, session: AsyncSession) -> None:
     )
     session.add(plan)
     await session.commit()
-    await message.answer_document(FSInputFile(output_path), caption=f"ИПР участника #{participant.id} сформирован.")
+    await _send_docx_with_pdf(message, output_path, caption=f"ИПР участника #{participant.id} сформирован.")
+
+
+async def _send_docx_with_pdf(message: Message, docx_path: Path, *, caption: str) -> None:
+    await message.answer_document(FSInputFile(docx_path), caption=caption)
+    try:
+        pdf_path = await convert_to_pdf(docx_path)
+    except Exception:  # noqa: BLE001 - PDF is a bonus, never block the docx delivery
+        logging.getLogger(__name__).exception("PDF conversion crashed for %s", docx_path)
+        pdf_path = None
+    if pdf_path is not None:
+        await message.answer_document(FSInputFile(pdf_path), caption="PDF-версия")
 
 
 def _command_arg(message: Message) -> str:
