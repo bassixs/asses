@@ -25,7 +25,7 @@ async def complete_json_openai_compatible(
     max_tokens: int,
     timeout_seconds: int,
     json_mode: bool,
-) -> dict[str, Any]:
+) -> Any:
     base_url, api_key, force_ipv4 = _provider_settings(provider)
     if not api_key:
         raise LLMJSONError(f"API key is not configured for provider: {provider}")
@@ -74,8 +74,8 @@ async def complete_json_openai_compatible(
             f"{provider} returned non-JSON content (finish_reason={finish_reason}): {content[:1200]}",
         ) from exc
 
-    if not isinstance(parsed, dict):
-        raise LLMJSONError(f"{provider} returned non-object JSON: {parsed}")
+    if not isinstance(parsed, (dict, list)):
+        raise LLMJSONError(f"{provider} returned neither a JSON object nor array: {parsed}")
     return parsed
 
 
@@ -120,8 +120,14 @@ def _extract_json_object(content: str) -> str:
     if text.startswith("```"):
         text = re.sub(r"^```(?:json)?\s*", "", text, flags=re.IGNORECASE)
         text = re.sub(r"\s*```$", "", text).strip()
-    start = text.find("{")
-    end = text.rfind("}")
-    if start == -1 or end == -1 or end <= start:
+
+    obj_start = text.find("{")
+    arr_start = text.find("[")
+    starts = [pos for pos in (obj_start, arr_start) if pos != -1]
+    if not starts:
+        return text
+    start = min(starts)
+    end = text.rfind("}") if text[start] == "{" else text.rfind("]")
+    if end == -1 or end <= start:
         return text
     return text[start : end + 1]

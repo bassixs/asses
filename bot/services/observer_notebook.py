@@ -4,7 +4,7 @@ from collections import defaultdict
 from dataclasses import dataclass
 import logging
 from pathlib import Path
-from typing import Literal
+from typing import Any, Literal
 
 from openpyxl import load_workbook
 from openpyxl.styles import Alignment
@@ -199,12 +199,108 @@ async def _analyze_indicator_batch(
         )
 
     try:
-        return NotebookAnalysisReport.model_validate(raw)
-    except ValidationError as exc:
+        return _coerce_notebook_report(raw)
+    except (ValidationError, NotebookProcessingError) as exc:
         logger.error("Invalid notebook analysis JSON (batch %s/%s): %s", batch_index, batch_count, exc)
         raise NotebookProcessingError(
             f"Модель вернула некорректную структуру оценки блокнота (батч {batch_index}/{batch_count}).",
         ) from exc
+
+
+# Wrapper keys the model has been observed to use instead of the expected "results".
+_RESULT_KEYS = ("results", "observations", "indicators", "segments", "items")
+_VALID_STATUSES = {"+", "-", "НЗ"}
+
+
+def _coerce_notebook_report(raw: Any) -> NotebookAnalysisReport:
+    """Normalize the loosely-structured LLM JSON into NotebookAnalysisReport.
+
+    Tolerates: a bare list of indicators; a dict wrapped under results/observations/
+    indicators/etc.; evidence given as a plain string; null comment/observable_reason.
+    """
+    role_summary = ""
+    participant_summary = ""
+
+    if isinstance(raw, list):
+        items: list[Any] = raw
+    elif isinstance(raw, dict):
+        role_summary = _as_text(raw.get("role_summary"))
+        participant_summary = _as_text(raw.get("participant_summary"))
+        items = []
+        for key in _RESULT_KEYS:
+            value = raw.get(key)
+            if isinstance(value, list):
+                items = value
+                break
+        else:
+            if raw.get("indicator_id") or raw.get("id"):
+                items = [raw]
+    else:
+        raise NotebookProcessingError("Ответ модели не является JSON-объектом или массивом.")
+
+    results: list[IndicatorAnalysis] = []
+    for item in items:
+        analysis = _coerce_indicator(item)
+        if analysis is not None:
+            results.append(analysis)
+
+    if not results:
+        raise NotebookProcessingError("Не удалось извлечь ни одного индикатора из ответа модели.")
+
+    return NotebookAnalysisReport(
+        role_summary=role_summary,
+        participant_summary=participant_summary,
+        results=results,
+    )
+
+
+def _coerce_indicator(item: Any) -> IndicatorAnalysis | None:
+    if not isinstance(item, dict):
+        return None
+    indicator_id = item.get("indicator_id") or item.get("id")
+    if not indicator_id:
+        return None
+    status = _as_text(item.get("status"))
+    if status not in _VALID_STATUSES:
+        status = "НЗ"
+    evidence = _coerce_evidence(item.get("evidence")) if status == "+" else []
+    return IndicatorAnalysis(
+        indicator_id=str(indicator_id),
+        status=status,  # type: ignore[arg-type]
+        evidence=evidence,
+        comment=_as_text(item.get("comment")),
+        observable_reason=_as_text(item.get("observable_reason")),
+    )
+
+
+def _coerce_evidence(value: Any) -> list[IndicatorEvidence]:
+    if not value:
+        return []
+    if isinstance(value, str):
+        text = value.strip()
+        return [IndicatorEvidence(quote=text)] if text else []
+    if isinstance(value, dict):
+        value = [value]
+    if not isinstance(value, list):
+        return []
+    out: list[IndicatorEvidence] = []
+    for entry in value:
+        if isinstance(entry, str):
+            text = entry.strip()
+            if text:
+                out.append(IndicatorEvidence(quote=text))
+        elif isinstance(entry, dict):
+            quote = _as_text(entry.get("quote") or entry.get("text"))
+            if quote:
+                timestamp = _as_text(entry.get("timestamp")) or None
+                out.append(IndicatorEvidence(quote=quote, timestamp=timestamp))
+    return out
+
+
+def _as_text(value: Any) -> str:
+    if value is None:
+        return ""
+    return str(value).strip()
 
 
 def fill_observer_notebook(
