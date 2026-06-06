@@ -129,6 +129,13 @@ class Settings(BaseSettings):
         default="32,24,16",
         validation_alias="WHISPER_COMPRESSION_BITRATES_KBPS",
     )
+    role_labeling_enabled: bool = Field(default=True, validation_alias="ROLE_LABELING_ENABLED")
+    role_labeling_provider: str = Field(default="aitunnel", validation_alias="ROLE_LABELING_PROVIDER")
+    role_labeling_model: str = Field(default="moonshotai/kimi-k2", validation_alias="ROLE_LABELING_MODEL")
+    role_labeling_timeout_seconds: int = Field(default=900, validation_alias="ROLE_LABELING_TIMEOUT_SECONDS")
+    role_labeling_chunk_chars: int = Field(default=7000, validation_alias="ROLE_LABELING_CHUNK_CHARS")
+    role_labeling_max_tokens: int = Field(default=8000, validation_alias="ROLE_LABELING_MAX_TOKENS")
+    role_labeling_temperature: float = Field(default=0.0, validation_alias="ROLE_LABELING_TEMPERATURE")
     admin_bot_password: str = Field(default="1172", validation_alias="ADMIN_BOT_PASSWORD")
     competencies: list[str] = Field(default_factory=lambda: DEFAULT_COMPETENCIES.copy())
 

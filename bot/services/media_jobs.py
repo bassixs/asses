@@ -17,6 +17,7 @@ from bot.models import InterviewRecord, MediaProcessingJob
 from bot.services.audio_preprocessing import AudioPreprocessingError, prepare_audio_for_upload
 from bot.services.aitunnel_whisper import AITunnelWhisperError, transcribe_file_aitunnel_whisper
 from bot.services.neuroapi_whisper import NeuroAPIWhisperError, transcribe_file_neuroapi_whisper
+from bot.services.role_labeling import RoleLabelingError, label_transcript_roles
 from bot.services.speechkit import SpeechKitError, transcribe_file
 from bot.services.telegram_files import download_telegram_file
 from bot.services.transcript_export import build_transcript_text_file
@@ -112,6 +113,7 @@ async def _process_job(bot: Bot, job_id: int) -> None:
         provider_name = _provider_name(job.stt_provider)
         await bot.send_message(job.chat_id, f"Задача #{job.id}: отправляю аудио на расшифровку через {provider_name}...")
         transcript = await _transcribe_with_provider(local_path, job.stt_provider)
+        transcript = await _label_roles_or_keep_raw(bot, job, transcript)
 
         record_id = await _create_record(job, local_path, transcript)
         transcript_path = await build_transcript_text_file(transcript=transcript, record_id=record_id)
@@ -210,6 +212,22 @@ async def _transcribe_with_provider(local_path: Path, provider: str) -> str:
         )
         return await transcribe_file_neuroapi_whisper(upload_path)
     return await transcribe_file(local_path)
+
+
+async def _label_roles_or_keep_raw(bot: Bot, job: ClaimedMediaJob, transcript: str) -> str:
+    if not settings.role_labeling_enabled:
+        return transcript
+
+    try:
+        await bot.send_message(job.chat_id, f"Задача #{job.id}: размечаю роли ведущий/участник...")
+        return await label_transcript_roles(transcript)
+    except RoleLabelingError as exc:
+        logger.exception("Role labeling failed for media job id=%s", job.id)
+        await bot.send_message(
+            job.chat_id,
+            f"Задача #{job.id}: расшифровка готова, но роли не удалось разметить: {escape(str(exc), quote=False)}",
+        )
+        return transcript
 
 
 def _provider_name(provider: str) -> str:
