@@ -59,10 +59,20 @@ async def complete_json_openai_compatible(
         raise LLMJSONError(f"{provider} network error: {exc}") from exc
 
     content = _extract_message_content(payload)
+    if not content.strip():
+        finish_reason = _finish_reason(payload)
+        raise LLMJSONError(
+            f"{provider} returned empty content (finish_reason={finish_reason}). "
+            "Likely the response was truncated by max_tokens or the prompt was too large; "
+            "lower NOTEBOOK_ANALYSIS_BATCH_SIZE or raise ANALYSIS_LLM_MAX_TOKENS.",
+        )
     try:
         parsed = json.loads(_extract_json_object(content))
     except json.JSONDecodeError as exc:
-        raise LLMJSONError(f"{provider} returned non-JSON content: {content[:1200]}") from exc
+        finish_reason = _finish_reason(payload)
+        raise LLMJSONError(
+            f"{provider} returned non-JSON content (finish_reason={finish_reason}): {content[:1200]}",
+        ) from exc
 
     if not isinstance(parsed, dict):
         raise LLMJSONError(f"{provider} returned non-object JSON: {parsed}")
@@ -96,6 +106,13 @@ def _extract_message_content(payload: dict[str, Any]) -> str:
     if not isinstance(content, str):
         raise LLMJSONError(f"LLM response content is not text: {payload}")
     return content
+
+
+def _finish_reason(payload: dict[str, Any]) -> str | None:
+    try:
+        return payload["choices"][0].get("finish_reason")
+    except (KeyError, IndexError, TypeError):
+        return None
 
 
 def _extract_json_object(content: str) -> str:

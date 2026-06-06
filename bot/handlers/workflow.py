@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+import logging
 from html import escape
 from pathlib import Path
 
@@ -23,7 +24,9 @@ from bot.models import (
     Participant,
     ParticipantReport,
 )
+from bot.services.llm_json import LLMJSONError
 from bot.services.observer_notebook import (
+    NotebookProcessingError,
     analyze_notebook_indicators,
     extract_notebook_indicators,
     fill_observer_notebook,
@@ -287,7 +290,12 @@ async def cmd_process_exercise(message: Message, session: AsyncSession) -> None:
     await message.answer("Обрабатываю упражнение: заполняю блокнот наблюдателя...")
     input_path = Path(notebook.file_path)
     indicators = extract_notebook_indicators(input_path)
-    report = await analyze_notebook_indicators(transcript=record.transcript, indicators=indicators)
+    try:
+        report = await analyze_notebook_indicators(transcript=record.transcript, indicators=indicators)
+    except (NotebookProcessingError, LLMJSONError) as exc:
+        logging.getLogger(__name__).exception("process_exercise analysis failed for exercise_id=%s", exercise.id)
+        await message.answer(f"Не удалось обработать упражнение #{exercise.id}: {escape(str(exc), quote=False)}")
+        return
     output_path = settings.download_dir.parent / "reports" / f"exercise_{exercise.id}_filled.xlsx"
     result_json = fill_observer_notebook(
         input_path=input_path,

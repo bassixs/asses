@@ -11,7 +11,7 @@ from openpyxl.styles import Alignment
 from pydantic import BaseModel, Field, ValidationError, field_validator
 
 from bot.config import settings
-from bot.services.llm_json import complete_json_openai_compatible
+from bot.services.llm_json import LLMJSONError, complete_json_openai_compatible
 from bot.services.role_labeling import extract_participant_transcript
 from bot.services.yandex_gpt import complete_json
 
@@ -110,6 +110,63 @@ async def analyze_notebook_indicators(
     transcript: str,
     indicators: list[IndicatorRow],
 ) -> NotebookAnalysisReport:
+    system_prompt = _build_notebook_system_prompt()
+    participant_transcript = extract_participant_transcript(transcript)
+
+    batch_size = max(1, settings.notebook_analysis_batch_size)
+    batches = [indicators[i : i + batch_size] for i in range(0, len(indicators), batch_size)]
+
+    all_results: list[IndicatorAnalysis] = []
+    role_summary = ""
+    participant_summary = ""
+    succeeded = 0
+    last_error: Exception | None = None
+
+    for batch_index, batch in enumerate(batches, start=1):
+        try:
+            report = await _analyze_indicator_batch(
+                system_prompt=system_prompt,
+                transcript=participant_transcript,
+                indicators=batch,
+                batch_index=batch_index,
+                batch_count=len(batches),
+            )
+        except (LLMJSONError, NotebookProcessingError) as exc:
+            # One bad batch should not fail the whole exercise; its indicators are
+            # marked "НЗ" later by _ensure_all_indicators.
+            logger.error("Notebook analysis batch %s/%s failed: %s", batch_index, len(batches), exc)
+            last_error = exc
+            continue
+
+        succeeded += 1
+        all_results.extend(report.results)
+        if not role_summary and report.role_summary:
+            role_summary = report.role_summary
+        if not participant_summary and report.participant_summary:
+            participant_summary = report.participant_summary
+
+    if succeeded == 0:
+        raise NotebookProcessingError(
+            f"Не удалось получить оценку блокнота ни по одному батчу ({len(batches)} шт.). "
+            f"Последняя ошибка: {last_error}",
+        )
+
+    merged = NotebookAnalysisReport(
+        role_summary=role_summary,
+        participant_summary=participant_summary,
+        results=all_results,
+    )
+    return _ensure_all_indicators(merged, indicators)
+
+
+async def _analyze_indicator_batch(
+    *,
+    system_prompt: str,
+    transcript: str,
+    indicators: list[IndicatorRow],
+    batch_index: int,
+    batch_count: int,
+) -> NotebookAnalysisReport:
     payload = [
         {
             "indicator_id": item.indicator_id,
@@ -118,16 +175,16 @@ async def analyze_notebook_indicators(
         }
         for item in indicators
     ]
-    system_prompt = _build_notebook_system_prompt()
-    participant_transcript = extract_participant_transcript(transcript)
-    user_prompt = _build_notebook_user_prompt(transcript=participant_transcript, indicators=payload)
+    user_prompt = _build_notebook_user_prompt(transcript=transcript, indicators=payload)
+    logger.info("Notebook analysis batch %s/%s: indicators=%s", batch_index, batch_count, len(indicators))
+
     if settings.analysis_llm_provider.lower().strip() == "yandex":
         raw = await complete_json(
             system_prompt=system_prompt,
             user_prompt=user_prompt,
             json_schema=NotebookAnalysisReport.model_json_schema(),
             temperature=0.05,
-            max_tokens=8000,
+            max_tokens=settings.analysis_llm_max_tokens,
         )
     else:
         raw = await complete_json_openai_compatible(
@@ -142,12 +199,12 @@ async def analyze_notebook_indicators(
         )
 
     try:
-        report = NotebookAnalysisReport.model_validate(raw)
+        return NotebookAnalysisReport.model_validate(raw)
     except ValidationError as exc:
-        logger.error("Invalid notebook analysis JSON schema: %s", exc)
-        raise NotebookProcessingError("YandexGPT вернул некорректную структуру оценки блокнота.") from exc
-
-    return _ensure_all_indicators(report, indicators)
+        logger.error("Invalid notebook analysis JSON (batch %s/%s): %s", batch_index, batch_count, exc)
+        raise NotebookProcessingError(
+            f"Модель вернула некорректную структуру оценки блокнота (батч {batch_index}/{batch_count}).",
+        ) from exc
 
 
 def fill_observer_notebook(

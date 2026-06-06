@@ -149,6 +149,7 @@ class Settings(BaseSettings):
     analysis_llm_temperature: float = Field(default=0.05, validation_alias="ANALYSIS_LLM_TEMPERATURE")
     analysis_llm_max_tokens: int = Field(default=8000, validation_alias="ANALYSIS_LLM_MAX_TOKENS")
     analysis_llm_json_mode: bool = Field(default=False, validation_alias="ANALYSIS_LLM_JSON_MODE")
+    notebook_analysis_batch_size: int = Field(default=20, validation_alias="NOTEBOOK_ANALYSIS_BATCH_SIZE")
     admin_bot_password: str = Field(default="1172", validation_alias="ADMIN_BOT_PASSWORD")
     competencies: list[str] = Field(default_factory=lambda: DEFAULT_COMPETENCIES.copy())
 
