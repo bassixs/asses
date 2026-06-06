@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from collections import defaultdict
 from pathlib import Path
+import re
 from typing import Any
 
 from docx import Document
@@ -254,10 +255,11 @@ def _aggregate(exercise_results: list[dict[str, Any]]) -> dict[str, dict[str, An
         strengths: list[str] = []
         growth_zones: list[str] = []
         for indicator_text, statuses in data["indicator_statuses"].items():
+            clean_text = clean_indicator_text(indicator_text)
             if statuses and all(status == "+" for status in statuses):
-                strengths.append(indicator_text)
+                strengths.append(clean_text)
             elif any(status == "-" for status in statuses):
-                growth_zones.append(indicator_text)
+                growth_zones.append(clean_text)
 
         levels = data["levels"]
         avg_level = round(sum(levels) / len(levels), 2) if levels else 0
@@ -267,6 +269,52 @@ def _aggregate(exercise_results: list[dict[str, Any]]) -> dict[str, dict[str, An
             "growth_zones": growth_zones,
         }
     return output
+
+
+# Assessor-facing instructions baked into notebook indicator texts that should not
+# appear in a participant-facing report.
+_ASSESSOR_PATTERNS = [
+    re.compile(r"дополнительный\s+замер\s*:?", re.IGNORECASE),
+    re.compile(r"доп\.?\s*замер\s*:?", re.IGNORECASE),
+    re.compile(r"ставим\s+замер[^.;]*", re.IGNORECASE),
+    re.compile(r"смотр(?:им|ите)[^.;]*", re.IGNORECASE),
+    re.compile(r"уточнит[ьея][^.;]*интервью[^.;]*", re.IGNORECASE),
+    re.compile(r"(?<!\w)не\s+закрываем", re.IGNORECASE),
+    re.compile(r"(?<!\w)закрываем", re.IGNORECASE),
+    re.compile(r"\b(?:например|т\.е\.|и\s*т\.\s*д\.?|и\s*т\.\s*п\.?)\b[,.]?", re.IGNORECASE),
+]
+
+
+def clean_indicator_text(text: str) -> str:
+    """Strip assessor notes, parenthetical examples and quotes from an indicator text."""
+    if not text:
+        return text
+    cleaned = text
+
+    # Remove balanced parenthetical groups (examples / assessor hints), repeat for nesting.
+    for _ in range(5):
+        replaced = re.sub(r"\([^()]*\)", " ", cleaned)
+        if replaced == cleaned:
+            break
+        cleaned = replaced
+    # Drop a stray unbalanced "(" and everything after it.
+    if "(" in cleaned:
+        cleaned = cleaned[: cleaned.index("(")]
+
+    # Remove quoted example fragments.
+    cleaned = re.sub(r"«[^»]*»", " ", cleaned)
+    cleaned = re.sub(r'"[^"]*"', " ", cleaned)
+
+    for pattern in _ASSESSOR_PATTERNS:
+        cleaned = pattern.sub(" ", cleaned)
+
+    cleaned = re.sub(r"\s*/\s*", " / ", cleaned)
+    cleaned = re.sub(r"\s+([,.;:])", r"\1", cleaned)
+    cleaned = re.sub(r"[;,]\s*$", "", cleaned)
+    cleaned = re.sub(r"\s{2,}", " ", cleaned)
+    cleaned = cleaned.strip(" ;,-—/\t\n.")
+
+    return cleaned if cleaned else text.strip()
 
 
 def _recommendations(growth_zones: list[str]) -> list[str]:
