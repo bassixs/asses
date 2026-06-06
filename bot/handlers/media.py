@@ -95,11 +95,14 @@ async def callback_stt_provider(callback: CallbackQuery, session: AsyncSession) 
         await callback.answer("Некорректная команда", show_alert=True)
         return
 
-    if provider not in {"yandex", "aitunnel"}:
+    if provider not in {"yandex", "aitunnel", "neuroapi"}:
         await callback.answer("Неизвестный провайдер", show_alert=True)
         return
     if provider == "aitunnel" and not settings.aitunnel_api_key:
         await callback.answer("AI Tunnel API key не настроен на сервере", show_alert=True)
+        return
+    if provider == "neuroapi" and not settings.neuroapi_api_key:
+        await callback.answer("NeuroAPI API key не настроен на сервере", show_alert=True)
         return
 
     job = await session.scalar(
@@ -119,7 +122,10 @@ async def callback_stt_provider(callback: CallbackQuery, session: AsyncSession) 
     job.status = "queued"
     await session.commit()
 
-    provider_name = "AI Tunnel Whisper" if provider == "aitunnel" else "Yandex"
+    provider_name = {
+        "aitunnel": "AI Tunnel Whisper",
+        "neuroapi": "NeuroAPI Whisper",
+    }.get(provider, "Yandex")
     await callback.answer(f"Выбрано: {provider_name}")
     await callback.message.edit_reply_markup(reply_markup=None)
     await callback.message.answer(

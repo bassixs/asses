@@ -30,6 +30,7 @@ def stt_provider_keyboard(job_id: int) -> InlineKeyboardMarkup:
                 InlineKeyboardButton(text="Yandex", callback_data=f"stt_provider:{job_id}:yandex"),
                 InlineKeyboardButton(text="AI Tunnel Whisper", callback_data=f"stt_provider:{job_id}:aitunnel"),
             ],
+            [InlineKeyboardButton(text="NeuroAPI Whisper", callback_data=f"stt_provider:{job_id}:neuroapi")],
         ]
     )
 

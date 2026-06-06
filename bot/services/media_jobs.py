@@ -14,6 +14,7 @@ from bot.database import async_session_maker
 from bot.keyboards import transcript_actions_keyboard
 from bot.models import InterviewRecord, MediaProcessingJob
 from bot.services.aitunnel_whisper import AITunnelWhisperError, transcribe_file_aitunnel_whisper
+from bot.services.neuroapi_whisper import NeuroAPIWhisperError, transcribe_file_neuroapi_whisper
 from bot.services.speechkit import SpeechKitError, transcribe_file
 from bot.services.telegram_files import download_telegram_file
 from bot.services.transcript_export import build_transcript_text_file
@@ -129,6 +130,10 @@ async def _process_job(bot: Bot, job_id: int) -> None:
         await _mark_failed(job_id, str(exc))
         logger.exception("AI Tunnel Whisper failed for media job id=%s", job_id)
         await bot.send_message(job.chat_id, f"Задача #{job.id}: AI Tunnel Whisper не смог расшифровать запись: {escape(str(exc), quote=False)}")
+    except NeuroAPIWhisperError as exc:
+        await _mark_failed(job_id, str(exc))
+        logger.exception("NeuroAPI Whisper failed for media job id=%s", job_id)
+        await bot.send_message(job.chat_id, f"Задача #{job.id}: NeuroAPI Whisper не смог расшифровать запись: {escape(str(exc), quote=False)}")
     except Exception as exc:
         await _mark_failed(job_id, str(exc))
         logger.exception("Media job failed id=%s", job_id)
@@ -186,12 +191,16 @@ async def _load_claimed_job(job_id: int) -> ClaimedMediaJob | None:
 async def _transcribe_with_provider(local_path: Path, provider: str) -> str:
     if provider == "aitunnel":
         return await transcribe_file_aitunnel_whisper(local_path)
+    if provider == "neuroapi":
+        return await transcribe_file_neuroapi_whisper(local_path)
     return await transcribe_file(local_path)
 
 
 def _provider_name(provider: str) -> str:
     if provider == "aitunnel":
         return "AI Tunnel Whisper"
+    if provider == "neuroapi":
+        return "NeuroAPI Whisper"
     return "Yandex"
 
 
