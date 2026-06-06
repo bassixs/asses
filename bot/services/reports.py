@@ -271,17 +271,26 @@ def _aggregate(exercise_results: list[dict[str, Any]]) -> dict[str, dict[str, An
     return output
 
 
-# Assessor-facing instructions baked into notebook indicator texts that should not
-# appear in a participant-facing report.
-_ASSESSOR_PATTERNS = [
-    re.compile(r"дополнительный\s+замер\s*:?", re.IGNORECASE),
-    re.compile(r"доп\.?\s*замер\s*:?", re.IGNORECASE),
-    re.compile(r"ставим\s+замер[^.;]*", re.IGNORECASE),
-    re.compile(r"смотр(?:им|ите)[^.;]*", re.IGNORECASE),
-    re.compile(r"уточнит[ьея][^.;]*интервью[^.;]*", re.IGNORECASE),
+# Assessor-facing clutter baked into notebook indicator texts that should not appear
+# in a participant-facing report.
+# Removed as a leading prefix only:
+_PREFIX_PATTERNS = [
+    re.compile(r"^\s*доп(?:олнительный)?\.?\s*замер\s*:?", re.IGNORECASE),
+]
+# Markers that introduce assessor examples/instructions: cut from the marker to the end.
+_CUT_TO_END_PATTERNS = [
+    re.compile(r"\bставим\s+замер.*", re.IGNORECASE),
+    re.compile(r"\bсмотр(?:им|ите)\b.*", re.IGNORECASE),
+    re.compile(r"\bуточн(?:ить|им|ите)\b[^.]*интервью.*", re.IGNORECASE),
+    re.compile(r"\bнапример\b.*", re.IGNORECASE),
+    re.compile(r"(?:^|\s)ИЛИ\s.*"),
+]
+# Removed wherever they occur:
+_TOKEN_PATTERNS = [
+    re.compile(r"\bдоп(?:олнительный)?\.?\s*замер\s*:?", re.IGNORECASE),
     re.compile(r"(?<!\w)не\s+закрываем", re.IGNORECASE),
     re.compile(r"(?<!\w)закрываем", re.IGNORECASE),
-    re.compile(r"\b(?:например|т\.е\.|и\s*т\.\s*д\.?|и\s*т\.\s*п\.?)\b[,.]?", re.IGNORECASE),
+    re.compile(r"\b(?:т\.е\.|и\s*т\.\s*д\.?|и\s*т\.\s*п\.?)\b[,.]?", re.IGNORECASE),
 ]
 
 
@@ -290,6 +299,9 @@ def clean_indicator_text(text: str) -> str:
     if not text:
         return text
     cleaned = text
+
+    for pattern in _PREFIX_PATTERNS:
+        cleaned = pattern.sub(" ", cleaned)
 
     # Remove balanced parenthetical groups (examples / assessor hints), repeat for nesting.
     for _ in range(5):
@@ -301,14 +313,22 @@ def clean_indicator_text(text: str) -> str:
     if "(" in cleaned:
         cleaned = cleaned[: cleaned.index("(")]
 
-    # Remove quoted example fragments.
+    # Remove balanced quoted fragments, then cut a stray unbalanced quote to the end.
     cleaned = re.sub(r"«[^»]*»", " ", cleaned)
     cleaned = re.sub(r'"[^"]*"', " ", cleaned)
+    for quote in ('"', "«", "»"):
+        if quote in cleaned:
+            cleaned = cleaned[: cleaned.index(quote)]
 
-    for pattern in _ASSESSOR_PATTERNS:
+    for pattern in _CUT_TO_END_PATTERNS:
+        cleaned = pattern.sub("", cleaned)
+    for pattern in _TOKEN_PATTERNS:
         cleaned = pattern.sub(" ", cleaned)
 
+    # Drop leftover stray parentheses / plus signs.
+    cleaned = re.sub(r"[()+]", " ", cleaned)
     cleaned = re.sub(r"\s*/\s*", " / ", cleaned)
+    cleaned = re.sub(r"\.{2,}", ".", cleaned)
     cleaned = re.sub(r"\s+([,.;:])", r"\1", cleaned)
     cleaned = re.sub(r"[;,]\s*$", "", cleaned)
     cleaned = re.sub(r"\s{2,}", " ", cleaned)
