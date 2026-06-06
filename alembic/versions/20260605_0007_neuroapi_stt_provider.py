@@ -1,4 +1,4 @@
-"""add neuroapi stt provider fields
+"""add stt provider fields
 
 Revision ID: 20260605_0007
 Revises: 20260604_0006

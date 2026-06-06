@@ -37,9 +37,9 @@ https://github.com/bassixs/asses.git
   - для длинных аудио включен speaker labeling;
   - async SpeechKit API v2 оставлен как fallback.
 - Добавлен тестовый выбор STT-провайдера прямо в Telegram:
-  - после загрузки аудио бот показывает кнопки `Yandex` и `NeuroAPI Whisper`;
+  - после загрузки аудио бот показывает кнопки `Yandex` и `AI Tunnel Whisper`;
   - выбранный провайдер сохраняется в задаче обработки и записи;
-  - NeuroAPI Whisper использует OpenAI-compatible endpoint `/audio/transcriptions`.
+  - AI Tunnel Whisper использует OpenAI-compatible endpoint `/audio/transcriptions`.
 - Добавлена интеграция с YandexGPT:
   - используется structured output через JSON schema;
   - ответ валидируется Pydantic-моделью;
@@ -100,7 +100,7 @@ https://github.com/bassixs/asses.git
 Python 3.11+
 aiogram 3.x
 Yandex SpeechKit
-NeuroAPI Whisper
+AI Tunnel Whisper
 YandexGPT
 Yandex Object Storage
 SQLAlchemy 2.0
