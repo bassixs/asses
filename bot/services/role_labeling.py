@@ -52,7 +52,28 @@ async def label_transcript_roles(transcript: str) -> str:
     return _merge_labeled_parts(labeled_parts)
 
 
-async def _label_chunk(*, chunk: str, previous_tail: str) -> RoleLabeledTranscript:
+async def _label_chunk(*, chunk: str, previous_tail: str, depth: int = 0) -> RoleLabeledTranscript:
+    try:
+        return await _label_chunk_once(chunk=chunk, previous_tail=previous_tail)
+    except RoleLabelingError:
+        if depth >= 3 or len(chunk) <= 1200:
+            raise
+        logger.warning("Role labeling chunk failed, splitting and retrying: depth=%s chars=%s", depth, len(chunk))
+
+    parts = _split_long_text(chunk, max_chars=max(1000, len(chunk) // 2))
+    if len(parts) < 2:
+        raise RoleLabelingError("Role labeling failed and chunk could not be split further")
+
+    segments: list[RoleSegment] = []
+    tail = previous_tail
+    for part in parts:
+        labeled = await _label_chunk(chunk=part, previous_tail=tail, depth=depth + 1)
+        segments.extend(labeled.segments)
+        tail = _tail_text(labeled.segments)
+    return RoleLabeledTranscript(segments=segments)
+
+
+async def _label_chunk_once(*, chunk: str, previous_tail: str) -> RoleLabeledTranscript:
     payload = await _complete_json(
         system_prompt=_system_prompt(),
         user_prompt=_user_prompt(chunk=chunk, previous_tail=previous_tail),
