@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import asyncio
 import logging
 from typing import Any
 
@@ -42,29 +43,34 @@ async def enrich_competencies_with_advice(
     participant_name: str,
 ) -> None:
     """Add LLM-generated 'recommendations' and 'ipr_actions' to each competence in place."""
-    for competence, data in competencies.items():
-        if not isinstance(data, dict):
-            continue
+    semaphore = asyncio.Semaphore(max(1, settings.analysis_llm_max_concurrency))
+
+    async def enrich_one(competence: str, data: dict[str, Any]) -> None:
         growth_zones = data.get("growth_zones", []) or []
         if not growth_zones:
             data["recommendations"] = []
             data["ipr_actions"] = []
-            continue
+            return
 
-        try:
-            advice = await _generate_competency_advice(
-                competence=competence,
-                level=data.get("avg_level", 0),
-                strengths=data.get("strengths", []) or [],
-                growth_zones=growth_zones,
-                participant_name=participant_name,
-            )
-        except Exception as exc:  # noqa: BLE001 - advice must never break report generation
-            logger.error("Advice generation failed for competence %s: %s", competence, exc)
-            advice = {"recommendations": [], "ipr_actions": []}
+        async with semaphore:
+            try:
+                advice = await _generate_competency_advice(
+                    competence=competence,
+                    level=data.get("avg_level", 0),
+                    strengths=data.get("strengths", []) or [],
+                    growth_zones=growth_zones,
+                    participant_name=participant_name,
+                )
+            except Exception as exc:  # noqa: BLE001 - advice must never break report generation
+                logger.error("Advice generation failed for competence %s: %s", competence, exc)
+                advice = {"recommendations": [], "ipr_actions": []}
 
         data["recommendations"] = advice["recommendations"] or _fallback_actions(growth_zones)
         data["ipr_actions"] = advice["ipr_actions"] or _fallback_actions(growth_zones)
+
+    await asyncio.gather(
+        *(enrich_one(competence, data) for competence, data in competencies.items() if isinstance(data, dict))
+    )
 
 
 async def _generate_competency_advice(

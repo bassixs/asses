@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import asyncio
 from collections import defaultdict
 from dataclasses import dataclass
 import json
@@ -117,28 +118,36 @@ async def analyze_notebook_indicators(
     batch_size = max(1, settings.notebook_analysis_batch_size)
     batches = [indicators[i : i + batch_size] for i in range(0, len(indicators), batch_size)]
 
+    semaphore = asyncio.Semaphore(max(1, settings.analysis_llm_max_concurrency))
+
+    async def run_batch(batch_index: int, batch: list[IndicatorRow]) -> NotebookAnalysisReport | None:
+        async with semaphore:
+            try:
+                return await _analyze_indicator_batch(
+                    system_prompt=system_prompt,
+                    transcript=participant_transcript,
+                    indicators=batch,
+                    batch_index=batch_index,
+                    batch_count=len(batches),
+                )
+            except (LLMJSONError, NotebookProcessingError) as exc:
+                # One bad batch should not fail the whole exercise; its indicators are
+                # marked "НЗ" later by _ensure_all_indicators.
+                logger.error("Notebook analysis batch %s/%s failed: %s", batch_index, len(batches), exc)
+                return None
+
+    reports = await asyncio.gather(
+        *(run_batch(index, batch) for index, batch in enumerate(batches, start=1))
+    )
+
     all_results: list[IndicatorAnalysis] = []
     role_summary = ""
     participant_summary = ""
     succeeded = 0
-    last_error: Exception | None = None
 
-    for batch_index, batch in enumerate(batches, start=1):
-        try:
-            report = await _analyze_indicator_batch(
-                system_prompt=system_prompt,
-                transcript=participant_transcript,
-                indicators=batch,
-                batch_index=batch_index,
-                batch_count=len(batches),
-            )
-        except (LLMJSONError, NotebookProcessingError) as exc:
-            # One bad batch should not fail the whole exercise; its indicators are
-            # marked "НЗ" later by _ensure_all_indicators.
-            logger.error("Notebook analysis batch %s/%s failed: %s", batch_index, len(batches), exc)
-            last_error = exc
+    for report in reports:
+        if report is None:
             continue
-
         succeeded += 1
         all_results.extend(report.results)
         if not role_summary and report.role_summary:
@@ -149,7 +158,7 @@ async def analyze_notebook_indicators(
     if succeeded == 0:
         raise NotebookProcessingError(
             f"Не удалось получить оценку блокнота ни по одному батчу ({len(batches)} шт.). "
-            f"Последняя ошибка: {last_error}",
+            "Подробности ошибок — в логе сервера.",
         )
 
     merged = NotebookAnalysisReport(
