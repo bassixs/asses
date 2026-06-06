@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from collections import defaultdict
 from dataclasses import dataclass
+import json
 import logging
 from pathlib import Path
 from typing import Any, Literal
@@ -201,43 +202,47 @@ async def _analyze_indicator_batch(
     try:
         return _coerce_notebook_report(raw)
     except (ValidationError, NotebookProcessingError) as exc:
-        logger.error("Invalid notebook analysis JSON (batch %s/%s): %s", batch_index, batch_count, exc)
+        logger.error(
+            "Invalid notebook analysis JSON (batch %s/%s): %s; raw=%s",
+            batch_index,
+            batch_count,
+            exc,
+            _truncate_raw(raw),
+        )
         raise NotebookProcessingError(
             f"Модель вернула некорректную структуру оценки блокнота (батч {batch_index}/{batch_count}).",
         ) from exc
 
 
 # Wrapper keys the model has been observed to use instead of the expected "results".
-_RESULT_KEYS = ("results", "observations", "indicators", "segments", "items")
+_RESULT_KEYS = ("results", "observations", "indicators", "segments", "items", "data", "evaluations")
+# Field names the model uses for the indicator id.
+_ID_KEYS = ("indicator_id", "indicatorId", "indicator_code", "id", "code", "number")
 _VALID_STATUSES = {"+", "-", "НЗ"}
+
+
+def _truncate_raw(raw: Any, limit: int = 1200) -> str:
+    try:
+        text = json.dumps(raw, ensure_ascii=False)
+    except (TypeError, ValueError):
+        text = str(raw)
+    return text[:limit]
 
 
 def _coerce_notebook_report(raw: Any) -> NotebookAnalysisReport:
     """Normalize the loosely-structured LLM JSON into NotebookAnalysisReport.
 
-    Tolerates: a bare list of indicators; a dict wrapped under results/observations/
-    indicators/etc.; evidence given as a plain string; null comment/observable_reason.
+    Tolerates: a bare list; a dict wrapped under results/observations/indicators/etc.;
+    a dict keyed by indicator id ({"I001": {...}}); evidence as a plain string; null
+    comment/observable_reason; and several id field names.
     """
     role_summary = ""
     participant_summary = ""
-
-    if isinstance(raw, list):
-        items: list[Any] = raw
-    elif isinstance(raw, dict):
+    if isinstance(raw, dict):
         role_summary = _as_text(raw.get("role_summary"))
         participant_summary = _as_text(raw.get("participant_summary"))
-        items = []
-        for key in _RESULT_KEYS:
-            value = raw.get(key)
-            if isinstance(value, list):
-                items = value
-                break
-        else:
-            if raw.get("indicator_id") or raw.get("id"):
-                items = [raw]
-    else:
-        raise NotebookProcessingError("Ответ модели не является JSON-объектом или массивом.")
 
+    items = _extract_items(raw)
     results: list[IndicatorAnalysis] = []
     for item in items:
         analysis = _coerce_indicator(item)
@@ -254,10 +259,48 @@ def _coerce_notebook_report(raw: Any) -> NotebookAnalysisReport:
     )
 
 
+def _extract_items(raw: Any) -> list[dict[str, Any]]:
+    if isinstance(raw, list):
+        return [item for item in raw if isinstance(item, dict)]
+    if not isinstance(raw, dict):
+        return []
+
+    for key in _RESULT_KEYS:
+        if key in raw:
+            items = _as_item_list(raw[key])
+            if items:
+                return items
+
+    # The dict may itself be a single indicator...
+    if _looks_like_indicator(raw):
+        return [raw]
+    # ...or a map of indicator_id -> analysis at the top level.
+    return _as_item_list(raw)
+
+
+def _as_item_list(value: Any) -> list[dict[str, Any]]:
+    if isinstance(value, list):
+        return [item for item in value if isinstance(item, dict)]
+    if isinstance(value, dict):
+        items: list[dict[str, Any]] = []
+        for key, entry in value.items():
+            if isinstance(entry, dict):
+                item = dict(entry)
+                if not _looks_like_indicator(item):
+                    item.setdefault("indicator_id", key)
+                items.append(item)
+        return items
+    return []
+
+
+def _looks_like_indicator(item: dict[str, Any]) -> bool:
+    return any(item.get(key) for key in _ID_KEYS)
+
+
 def _coerce_indicator(item: Any) -> IndicatorAnalysis | None:
     if not isinstance(item, dict):
         return None
-    indicator_id = item.get("indicator_id") or item.get("id")
+    indicator_id = next((item[key] for key in _ID_KEYS if item.get(key)), None)
     if not indicator_id:
         return None
     status = _as_text(item.get("status"))
