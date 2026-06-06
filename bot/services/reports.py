@@ -69,7 +69,7 @@ def build_development_plan_text(
         growth_zones = data.get("growth_zones", [])
         if not growth_zones:
             continue
-        recommendations = _recommendations(growth_zones)
+        recommendations = data.get("ipr_actions") or _recommendations(growth_zones)
         plan[competence] = {"growth_zones": growth_zones, "recommendations": recommendations}
         lines.append(f"Компетенция: {competence}")
         lines.append("Зоны развития:")
@@ -157,7 +157,8 @@ def save_participant_report_docx(
         _add_list_or_empty(doc, data.get("growth_zones", []), "Не выявлено по обработанным упражнениям.")
 
         _add_heading(doc, "Рекомендации по развитию", level=2)
-        _add_list_or_empty(doc, _recommendations(data.get("growth_zones", [])), "Продолжать закреплять сильные стороны.")
+        recommendations = data.get("recommendations") or _recommendations(data.get("growth_zones", []))
+        _add_list_or_empty(doc, recommendations, "Продолжать закреплять сильные стороны.")
 
     path.parent.mkdir(parents=True, exist_ok=True)
     doc.save(path)

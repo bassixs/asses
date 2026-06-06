@@ -24,6 +24,7 @@ from bot.models import (
     Participant,
     ParticipantReport,
 )
+from bot.services.development_advice import enrich_competencies_with_advice
 from bot.services.llm_json import LLMJSONError
 from bot.services.observer_notebook import (
     NotebookProcessingError,
@@ -344,6 +345,11 @@ async def cmd_generate_report(message: Message, session: AsyncSession) -> None:
     _, result_json = build_participant_report_text(
         participant_name=participant.full_name,
         exercise_results=[item.result_json for item in fills],
+    )
+    await message.answer("Формирую отчёт и персональные рекомендации...")
+    await enrich_competencies_with_advice(
+        result_json.get("competencies", {}),
+        participant_name=participant.full_name,
     )
     exercises = list(
         await session.scalars(
