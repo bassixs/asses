@@ -136,6 +136,7 @@ class Settings(BaseSettings):
     role_labeling_chunk_chars: int = Field(default=7000, validation_alias="ROLE_LABELING_CHUNK_CHARS")
     role_labeling_max_tokens: int = Field(default=8000, validation_alias="ROLE_LABELING_MAX_TOKENS")
     role_labeling_temperature: float = Field(default=0.0, validation_alias="ROLE_LABELING_TEMPERATURE")
+    role_labeling_json_mode: bool = Field(default=False, validation_alias="ROLE_LABELING_JSON_MODE")
     admin_bot_password: str = Field(default="1172", validation_alias="ADMIN_BOT_PASSWORD")
     competencies: list[str] = Field(default_factory=lambda: DEFAULT_COMPETENCIES.copy())
 

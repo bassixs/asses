@@ -96,8 +96,9 @@ async def _complete_json(*, system_prompt: str, user_prompt: str) -> dict[str, A
         ],
         "temperature": settings.role_labeling_temperature,
         "max_tokens": settings.role_labeling_max_tokens,
-        "response_format": {"type": "json_object"},
     }
+    if settings.role_labeling_json_mode:
+        body["response_format"] = {"type": "json_object"}
     timeout = aiohttp.ClientTimeout(total=settings.role_labeling_timeout_seconds)
     connector = aiohttp.TCPConnector(family=socket.AF_INET if force_ipv4 else socket.AF_UNSPEC)
 
@@ -119,7 +120,7 @@ async def _complete_json(*, system_prompt: str, user_prompt: str) -> dict[str, A
         raise RoleLabelingError(f"Role labeling response content is not text: {payload}")
 
     try:
-        parsed = json.loads(content)
+        parsed = json.loads(_extract_json_object(content))
     except json.JSONDecodeError as exc:
         raise RoleLabelingError(f"Role labeling returned non-JSON content: {content[:1000]}") from exc
 
@@ -149,6 +150,18 @@ def _sanitize_labeled_transcript(labeled: RoleLabeledTranscript) -> RoleLabeledT
             continue
         segments.append(RoleSegment(role=role, text=text))  # type: ignore[arg-type]
     return RoleLabeledTranscript(segments=segments)
+
+
+def _extract_json_object(content: str) -> str:
+    text = content.strip()
+    if text.startswith("```"):
+        text = re.sub(r"^```(?:json)?\s*", "", text, flags=re.IGNORECASE)
+        text = re.sub(r"\s*```$", "", text).strip()
+    start = text.find("{")
+    end = text.rfind("}")
+    if start == -1 or end == -1 or end <= start:
+        return text
+    return text[start : end + 1]
 
 
 def _chunk_transcript(transcript: str, *, max_chars: int) -> list[str]:
