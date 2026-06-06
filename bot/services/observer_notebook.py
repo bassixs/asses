@@ -27,6 +27,9 @@ class IndicatorRow:
     row: int
     competence: str
     indicator: str
+    status_col: int = 4
+    comment_col: int = 5
+    level_col: int = 6
 
 
 class IndicatorEvidence(BaseModel):
@@ -60,18 +63,21 @@ def extract_notebook_indicators(workbook_path: Path) -> list[IndicatorRow]:
     sheet = workbook.active
     indicators: list[IndicatorRow] = []
     current_competence = ""
+    layout = _detect_notebook_layout(sheet)
 
     for row in range(1, sheet.max_row + 1):
-        competence_raw = _cell_text(sheet.cell(row=row, column=2).value)
-        indicator = _cell_text(sheet.cell(row=row, column=3).value)
+        competence_raw = _cell_text(sheet.cell(row=row, column=layout["competence_col"]).value)
+        indicator = _cell_text(sheet.cell(row=row, column=layout["indicator_col"]).value)
+        status_header = _cell_text(sheet.cell(row=row, column=layout["status_col"]).value)
 
-        if competence_raw and not _looks_like_column_header(competence_raw):
+        if competence_raw and not _looks_like_column_header(competence_raw) and not _looks_like_level(competence_raw):
             current_competence = competence_raw
 
-        if not indicator or _looks_like_column_header(indicator):
+        if not indicator or _looks_like_column_header(indicator) or _looks_like_column_header(status_header):
             continue
 
-        competence = competence_raw or current_competence
+        competence = "" if _looks_like_level(competence_raw) else competence_raw
+        competence = competence or current_competence
         if not competence:
             competence = "Компетенция не указана"
 
@@ -81,11 +87,17 @@ def extract_notebook_indicators(workbook_path: Path) -> list[IndicatorRow]:
                 row=row,
                 competence=competence,
                 indicator=indicator,
+                status_col=layout["status_col"],
+                comment_col=layout["comment_col"],
+                level_col=layout["level_col"],
             )
         )
 
     if not indicators:
-        raise NotebookProcessingError("В блокноте не найдены поведенческие индикаторы в колонке C.")
+        raise NotebookProcessingError(
+            "В блокноте не найдены поведенческие индикаторы. "
+            "Проверьте, что рядом с ними есть колонки 'Проявления' и 'Комментарии'."
+        )
 
     return indicators
 
@@ -134,9 +146,9 @@ def fill_observer_notebook(
 
     for indicator in indicators:
         result = result_by_id[indicator.indicator_id]
-        sheet.cell(row=indicator.row, column=4).value = result.status
-        sheet.cell(row=indicator.row, column=5).value = _format_comment(result)
-        sheet.cell(row=indicator.row, column=5).alignment = Alignment(wrap_text=True, vertical="top")
+        sheet.cell(row=indicator.row, column=indicator.status_col).value = result.status
+        sheet.cell(row=indicator.row, column=indicator.comment_col).value = _format_comment(result)
+        sheet.cell(row=indicator.row, column=indicator.comment_col).alignment = Alignment(wrap_text=True, vertical="top")
 
     levels = _calculate_competency_levels(indicators, result_by_id)
     _write_competency_levels(sheet, indicator_by_row, levels)
@@ -251,14 +263,18 @@ def _write_competency_levels(
 ) -> None:
     written: set[str] = set()
     for row in range(1, sheet.max_row + 1):
-        competence = _cell_text(sheet.cell(row=row, column=2).value)
+        for column in (1, 2):
+            competence = _cell_text(sheet.cell(row=row, column=column).value)
+            if competence in levels and competence not in written:
+                level_col = _level_column_for_competence(indicator_by_row, competence)
+                sheet.cell(row=row, column=level_col).value = levels[competence]["level"]
+                written.add(competence)
+
+    for row in range(1, sheet.max_row + 1):
         indicator = indicator_by_row.get(row)
         if indicator and indicator.competence not in written:
-            sheet.cell(row=row, column=6).value = levels[indicator.competence]["level"]
+            sheet.cell(row=row, column=indicator.level_col).value = levels[indicator.competence]["level"]
             written.add(indicator.competence)
-        elif competence in levels and competence not in written:
-            sheet.cell(row=row, column=6).value = levels[competence]["level"]
-            written.add(competence)
 
 
 def _level_from_percent(percent: float) -> float:
@@ -292,6 +308,51 @@ def _format_comment(result: IndicatorAnalysis) -> str:
 
 def _cell_text(value: object) -> str:
     return str(value).strip() if value is not None else ""
+
+
+def _detect_notebook_layout(sheet) -> dict[str, int]:
+    for row in range(1, sheet.max_row + 1):
+        headers = {
+            column: _cell_text(sheet.cell(row=row, column=column).value)
+            for column in range(1, sheet.max_column + 1)
+        }
+        status_col = next((column for column, text in headers.items() if text.casefold() == "проявления"), None)
+        comment_col = next(
+            (column for column, text in headers.items() if text.casefold() in {"комментарии", "комментарий"}),
+            None,
+        )
+        if status_col and comment_col and status_col > 1:
+            indicator_col = status_col - 1
+            return {
+                "competence_col": max(1, indicator_col - 1),
+                "indicator_col": indicator_col,
+                "status_col": status_col,
+                "comment_col": comment_col,
+                "level_col": comment_col + 1,
+            }
+
+    return {
+        "competence_col": 2,
+        "indicator_col": 3,
+        "status_col": 4,
+        "comment_col": 5,
+        "level_col": 6,
+    }
+
+
+def _looks_like_level(text: str) -> bool:
+    try:
+        float(text.replace(",", "."))
+    except ValueError:
+        return False
+    return True
+
+
+def _level_column_for_competence(indicator_by_row: dict[int, IndicatorRow], competence: str) -> int:
+    for indicator in indicator_by_row.values():
+        if indicator.competence == competence:
+            return indicator.level_col
+    return 6
 
 
 def _looks_like_column_header(text: str) -> bool:
