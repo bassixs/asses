@@ -1,10 +1,24 @@
 # HR Assessment Telegram Bot
 
-## Кратко
+Документ фиксирует состояние проекта на 2026-06-06: что сделано, как работает бот, какие проблемы уже решены и что остается следующим техническим долгом.
 
-Проект — Telegram-бот для HR-ассесмента управленческих компетенций по записям интервью.
+## Суть проекта
 
-Бот принимает голосовые сообщения, аудиофайлы или документы с записью интервью, сохраняет файл, расшифровывает речь через Yandex SpeechKit, сохраняет транскрипт в SQLite, а затем по команде `/assess <ID>` отправляет транскрипт в YandexGPT и возвращает HR-у структурированный отчет по компетенциям.
+Проект - Telegram-бот для HR-ассессмента и ассессмент-центра.
+
+Главная цепочка:
+
+```text
+аудиозапись упражнения -> STT расшифровка -> разметка ролей -> оценка индикаторов/компетенций -> Excel-блокнот -> DOCX отчет -> DOCX ИПР
+```
+
+Бот работает с:
+
+- голосовыми сообщениями Telegram;
+- аудиофайлами и аудио-документами;
+- Excel-блокнотами наблюдателя `.xlsx`;
+- простыми командами ассессмент-центра: центр, участник, упражнение, привязка записи и блокнота;
+- отчетами и ИПР в `.docx`.
 
 Репозиторий:
 
@@ -12,218 +26,196 @@
 https://github.com/bassixs/asses.git
 ```
 
-Бот в Telegram:
+Основной бот:
 
 ```text
 @assessment40_bot
 ```
 
-## Что сделано
-
-- Создан Python-проект на `aiogram 3.x`.
-- Реализован Telegram-бот с командами:
-  - `/start` — приветствие и инструкция;
-  - `/criteria` — список текущих компетенций;
-  - `/my_assessments` — список последних оценок HR;
-  - `/assess <ID>` — запуск оценки по сохраненному транскрипту.
-- Добавлена обработка:
-  - voice messages;
-  - audio files;
-  - audio documents;
-  - Excel-блокнотов наблюдателя `.xlsx`.
-- Добавлена интеграция с Yandex SpeechKit:
-  - короткие Ogg Opus / raw LPCM файлы идут через sync API v1;
-  - длинные интервью и MP3 идут через Object Storage + async SpeechKit API v3;
-  - для длинных аудио включен speaker labeling;
-  - async SpeechKit API v2 оставлен как fallback.
-- Добавлен тестовый выбор STT-провайдера прямо в Telegram:
-  - после загрузки аудио бот показывает кнопки `Yandex` и `AI Tunnel Whisper`;
-  - выбранный провайдер сохраняется в задаче обработки и записи;
-  - AI Tunnel Whisper использует OpenAI-compatible endpoint `/audio/transcriptions`.
-- Добавлена интеграция с YandexGPT:
-  - используется structured output через JSON schema;
-  - ответ валидируется Pydantic-моделью;
-  - отчет сохраняется в базу.
-- Добавлена база данных:
-  - SQLAlchemy 2.0 async;
-  - SQLite на старте;
-  - Alembic migration.
-- Добавлен сценарий ассессмент-центра:
-  - загрузка Excel-блокнота наблюдателя;
-  - извлечение компетенций и поведенческих индикаторов из колонок B/C;
-  - оценка индикаторов по транскрипту через YandexGPT;
-  - заполнение колонок D/E/F;
-  - расчет уровня компетенции без учета `НЗ`;
-  - отправка заполненного `.xlsx` обратно HR-у.
-- Добавлена Yandex Cloud инфраструктура:
-  - service account `hr-assessment-bot`;
-  - роли для SpeechKit, YandexGPT и Object Storage;
-  - Object Storage bucket для аудиофайлов.
-- Проект развернут на сервере Timeweb:
-  - Ubuntu 24.04;
-  - systemd service `asses-bot`;
-  - бот запущен в polling-режиме.
-- Настроен локальный Telegram Bot API Server для приема больших файлов:
-  - Docker-контейнер `telegram-bot-api`;
-  - локальный endpoint `http://127.0.0.1:8081`;
-  - режим `--local`;
-  - лимит скачивания в боте поднят до 2 GB;
-  - добавлены увеличенные timeout и retry для больших медиа.
-- Проверен полный pipeline на MP3-записи около 61 MB / 25 минут:
-  - файл принят из Telegram;
-  - файл скачан через локальный Telegram Bot API;
-  - файл отправлен в Yandex Object Storage;
-  - SpeechKit async вернул транскрипт;
-  - YandexGPT сформировал оценку;
-  - бот отправил результат в Telegram.
-- Добавлена очередь задач обработки медиа:
-  - handler Telegram быстро создает задачу в БД и ждет выбора STT-провайдера;
-  - отдельный worker скачивает файл, запускает выбранный STT-провайдер и сохраняет результат;
-  - при перезапуске задачи в статусе `processing` возвращаются в очередь;
-  - бот присылает статусы обработки в Telegram.
-- Добавлен `.txt` файл расшифровки:
-  - полный транскрипт в формате диалога `Ведущий: ...` / `Участник: ...`;
-  - соседние реплики одного спикера объединяются, тайминги скрыты по умолчанию;
-  - роли всегда приводятся к двум значениям: `ведущий` и `участник`;
-  - при SpeechKit v3 роли строятся через `channelTag` дикторов, а не через построчное угадывание;
-  - YandexGPT не переписывает текст построчно, чтобы не менять смысл реплик;
-  - кнопка `Скачать расшифровку` под сообщением об успешной расшифровке.
-- Улучшено качество текстового результата после SpeechKit:
-  - добавлена автоматическая очистка явных и почти одинаковых соседних дублей;
-  - дополнительно схлопываются похожие альтернативы с одинаковым таймкодом;
-  - таймкод берется из альтернативы или первого слова, если SpeechKit его вернул;
-  - добавлена команда `/rebuild_transcript <ID записи>` для пересборки `.txt` файла по уже сохраненной записи.
-
-## Стек
+## Текущий стек
 
 ```text
 Python 3.11+
 aiogram 3.x
-Yandex SpeechKit
-AI Tunnel Whisper
-YandexGPT
-Yandex Object Storage
-SQLAlchemy 2.0
+SQLAlchemy 2.0 async
 Alembic
 SQLite
-Pydantic v2
+Pydantic v2 / pydantic-settings
 python-dotenv
 aiohttp
 boto3
-logging
+openpyxl
+python-docx
+ffmpeg
 systemd
+Docker для локального Telegram Bot API Server
 ```
 
-## Структура проекта
+Внешние AI/STT провайдеры:
+
+- Yandex SpeechKit, включая async через Yandex Object Storage;
+- AI Tunnel Whisper через OpenAI-compatible `/audio/transcriptions`;
+- NeuroAPI Whisper через OpenAI-compatible `/audio/transcriptions`;
+- YandexGPT как старый/резервный LLM;
+- NeuroAPI или AI Tunnel как OpenAI-compatible LLM для анализа и разметки ролей.
+
+## Основные файлы
 
 ```text
-bot/
-  main.py                 # Точка входа, запуск aiogram dispatcher
-  config.py               # Настройки через .env и pydantic-settings
-  database.py             # Async SQLAlchemy engine/session
-  keyboards.py            # Reply/Inline keyboards
-  handlers/
-    common.py             # /start, /criteria
-    media.py              # Загрузка и расшифровка файлов
-    assessment.py         # /assess, /my_assessments, форматирование отчета
-    notebook.py           # /fill_notebook и Excel-блокноты наблюдателя
-  models/
-    record.py             # InterviewRecord
-    assessment.py         # AssessmentResult
-    notebook.py           # ObserverNotebook, NotebookFillResult
-  services/
-    speechkit.py          # Sync/async SpeechKit transcription
-    yandex_gpt.py         # YandexGPT JSON completion
-    assessment.py         # analyze_transcript() и system prompt
-    object_storage.py     # Upload в Yandex Object Storage
-    observer_notebook.py  # Парсинг, анализ и заполнение Excel-блокнота
-alembic/
-  versions/
-    20260524_0001_initial.py
-docs/
-  YANDEX_CLOUD_SETUP.md
-  PROJECT_OVERVIEW.md
-  BOT_USAGE_SIMPLE.md
-  LOCAL_TELEGRAM_BOT_API.md
-scripts/
-  setup_yandex_cloud.ps1
-.env.example
-requirements.txt
-alembic.ini
+bot/main.py                         запуск aiogram, middleware БД, media worker
+bot/config.py                       настройки .env
+bot/database.py                     async SQLAlchemy engine/session
+bot/keyboards.py                    inline/reply клавиатуры
+
+bot/models/record.py                InterviewRecord, хранит raw_transcript и transcript
+bot/models/job.py                   MediaProcessingJob для очереди медиа
+bot/models/notebook.py              ObserverNotebook, NotebookFillResult
+bot/models/center.py                AssessmentCenter, Participant, Exercise, отчеты, ИПР
+bot/models/assessment.py            AssessmentResult
+
+bot/handlers/media.py               прием аудио, выбор STT, скачивание transcript txt, rebuild transcript
+bot/handlers/assessment.py          /assess и /my_assessments
+bot/handlers/notebook.py            загрузка и заполнение Excel-блокнота
+bot/handlers/workflow.py            workflow ассессмент-центра
+bot/handlers/admin.py               простая админка внутри Telegram
+bot/handlers/common.py              /start, /criteria
+
+bot/services/media_jobs.py          worker обработки аудио
+bot/services/speechkit.py           Yandex SpeechKit sync/async
+bot/services/aitunnel_whisper.py    AI Tunnel Whisper
+bot/services/neuroapi_whisper.py    NeuroAPI Whisper
+bot/services/audio_preprocessing.py подготовка аудио под лимиты Whisper (сжатие + переход к нарезке)
+bot/services/audio_chunking.py       нарезка длинного аудио на перекрывающиеся чанки и склейка transcript
+bot/services/role_labeling.py       разметка ролей ведущий/участник
+bot/services/assessment.py          оценка компетенций
+bot/services/observer_notebook.py   анализ и заполнение Excel-блокнота
+bot/services/llm_json.py            OpenAI-compatible JSON completion
+bot/services/yandex_gpt.py          YandexGPT JSON completion
+bot/services/object_storage.py      Yandex Object Storage
+bot/services/transcript_export.py   txt-файл расшифровки
+bot/services/reports.py             DOCX отчет и ИПР
+
+alembic/versions/                   миграции БД
+docs/BOT_USAGE_SIMPLE.md            простая инструкция пользователя
+docs/LOCAL_TELEGRAM_BOT_API.md      настройка локального Telegram Bot API
+docs/YANDEX_CLOUD_SETUP.md          настройка Yandex Cloud
+docs/NEXT_MODEL_PROMPT.md           prompt для следующей модели
 ```
 
-## Как работает основной сценарий
+## Как работает обработка аудио
 
-1. HR отправляет боту запись интервью.
-2. `bot/handlers/media.py` получает Telegram file_id.
-3. Бот создает запись в таблице `media_processing_jobs` со статусом `queued`.
-4. Пользователь сразу получает номер задачи.
-5. Worker забирает задачу и переводит ее в статус `processing`.
-6. Если включен локальный Telegram Bot API Server, aiogram обращается не к
-   `api.telegram.org`, а к `http://127.0.0.1:8081`.
-7. Worker скачивает файл в локальную папку:
+1. Пользователь отправляет аудио/voice/document.
+2. `bot/handlers/media.py` создает `MediaProcessingJob` со статусом `awaiting_provider`.
+3. Бот показывает кнопки выбора STT:
+   - `AI Tunnel Whisper`;
+   - `Yandex`;
+   - `NeuroAPI Whisper`.
+4. После выбора провайдера задача переходит в `queued`.
+5. `bot/services/media_jobs.py` забирает задачу, скачивает файл из Telegram и запускает выбранный STT.
+6. Если выбран AI Tunnel или NeuroAPI, перед отправкой файл проходит через `bot/services/audio_preprocessing.py`.
+   Для NeuroAPI это сжатие под лимит провайдера (`prepare_audio_for_upload`).
+   Для AI Tunnel используется `prepare_audio_chunks_for_upload`: сначала сжатие, а если даже на самом низком
+   битрейте файл не влезает в жёсткий лимит 25 MB, `bot/services/audio_chunking.py` режет аудио на
+   перекрывающиеся части, каждая часть расшифровывается отдельно, а transcript склеивается с удалением
+   дублей на стыках (`merge_chunk_transcripts`). Нарезка нужна только AI Tunnel из-за его лимита на запрос.
+7. STT возвращает сырой текст.
+8. Сырой текст сохраняется в `InterviewRecord.raw_transcript`.
+9. `bot/services/role_labeling.py` размечает роли `Ведущий` / `Участник`.
+10. Размеченный текст сохраняется в `InterviewRecord.transcript`.
+11. `bot/services/transcript_export.py` создает `.txt` файл расшифровки.
+12. Бот присылает сообщение с ID записи и кнопками:
+    - оценить компетенции;
+    - скачать расшифровку.
+
+Важно: `raw_transcript` нужен, чтобы можно было заново разметить роли без повторного STT и без влияния старых ошибочных меток.
+
+## Разметка ролей
+
+Файл: `bot/services/role_labeling.py`.
+
+Роли всегда приводятся к двум значениям:
+
+- `Ведущий` - ассессор, наблюдатель, интервьюер, ролевой игрок, сотрудник, клиент, любой неоцениваемый человек;
+- `Участник` - оцениваемый кандидат/руководитель, чьи компетенции проверяются.
+
+Ключевое правило: модель не должна определять участника по первому лицу, объему речи или имени персонажа. В ролевом упражнении сотрудник может много говорить о проблемах, усталости и возражениях, но он не является оцениваемым участником, если оценивается руководитель.
+
+После `/attach_record <exercise_id> <record_id>` бот знает имя участника из workflow и запускает повторную разметку ролей уже с контекстом:
 
 ```text
-data/uploads/
+известный оцениваемый участник
+название упражнения
+сырой transcript
 ```
 
-8. `bot/services/speechkit.py` выбирает способ распознавания:
-   - если файл маленький и формат подходит, используется sync SpeechKit v1;
-   - если файл длинный или MP3, файл загружается в Object Storage и запускается async SpeechKit v3;
-   - если v3 недоступен или вернул ошибку, бот может откатиться на async SpeechKit v2.
-9. SpeechKit возвращает транскрипт.
-10. `bot/services/speechkit.py` очищает явные повторы и почти одинаковые соседние фразы.
-11. Очищенный транскрипт сохраняется в таблицу `interview_records`.
-12. Worker создает `.txt` файл с полным транскриптом в формате `Ведущий: ...` / `Участник: ...`.
-13. Бот отвечает:
+Команда `/rebuild_transcript <record_id>` также пересобирает разметку от `raw_transcript`.
+
+## Как работает оценка компетенций
+
+Файл: `bot/services/assessment.py`.
+
+Команда:
 
 ```text
-Задача #<job_id>: расшифровано.
-ID записи: <id>
+/assess <record_id>
 ```
 
-Под сообщением есть кнопки `Оценить компетенции` и `Скачать расшифровку`.
+Сейчас `/assess` не блокирует Telegram handler: handler быстро отвечает, а LLM-задача запускается в фоне через `asyncio.create_task`. Результат приходит отдельным сообщением.
 
-14. HR отправляет:
+Перед отправкой в LLM используется `extract_participant_transcript()` из `bot/services/role_labeling.py`: в анализ уходит только текст строк `Участник:`. Это сделано, чтобы модель не оценивала ролевого сотрудника, ведущего или наблюдателя.
+
+Провайдер анализа задается в `.env`:
+
+```env
+ANALYSIS_LLM_PROVIDER=neuroapi
+ANALYSIS_LLM_MODEL=deepseek-v4-flash
+ANALYSIS_LLM_JSON_MODE=false
+```
+
+Можно вернуть YandexGPT:
+
+```env
+ANALYSIS_LLM_PROVIDER=yandex
+```
+
+## Как работает Excel-блокнот наблюдателя
+
+Файл: `bot/services/observer_notebook.py`.
+
+Бот читает `.xlsx` через `openpyxl`.
+
+Ожидаемая структура:
+
+- колонка B - компетенции и уровни;
+- колонка C - поведенческие индикаторы;
+- колонка D - проявление `+`, `-`, `НЗ`;
+- колонка E - комментарии и цитаты;
+- колонка F - уровень компетенции.
+
+Команды:
 
 ```text
-/assess <id>
+отправить .xlsx файл
+/fill_notebook <record_id> <notebook_id>
 ```
 
-15. `bot/services/assessment.py` формирует system prompt и вызывает YandexGPT.
-16. YandexGPT возвращает JSON по компетенциям.
-17. JSON валидируется Pydantic-моделью `AssessmentReport`.
-18. Результат сохраняется в таблицу `assessment_results`.
-19. Бот отправляет HR-у отчет.
-
-## Как работает сценарий ассессмент-центра
-
-1. HR отправляет аудиозапись упражнения.
-2. Бот расшифровывает запись и возвращает `ID записи`.
-3. HR отправляет Excel-блокнот наблюдателя `.xlsx`.
-4. Бот сохраняет блокнот, извлекает индикаторы из колонки C и возвращает `ID блокнота`.
-5. HR запускает:
+Или в workflow:
 
 ```text
-/fill_notebook <ID записи> <ID блокнота>
+/attach_notebook <exercise_id> <notebook_id>
+/process_exercise <exercise_id>
 ```
 
-6. Бот отправляет в YandexGPT транскрипт упражнения и список поведенческих индикаторов.
-7. YandexGPT определяет роли и оценивает только реплики оцениваемого участника.
-8. Для каждого индикатора возвращается `+`, `-` или `НЗ`.
-9. Бот заполняет блокнот:
-   - колонка D — проявление индикатора;
-   - колонка E — цитата и таймкод для `+`, причина для `НЗ`;
-   - колонка F — уровень компетенции.
-10. Бот отправляет заполненный `.xlsx` обратно в Telegram.
+`/fill_notebook` сейчас запускается в фоне и присылает готовый Excel отдельным сообщением.
 
-Формула уровня компетенции:
+Перед анализом индикаторов в LLM также передается только текст оцениваемого участника. Это снижает риск, что цитаты ролевого игрока попадут в evidence.
+
+Расчет уровня:
 
 ```text
-% проявления = количество "+" / количество наблюдаемых индикаторов * 100
+% = количество плюсов / количество наблюдаемых индикаторов
+НЗ исключается из расчета
 ```
-
-`НЗ` исключается из расчета.
 
 Шкала:
 
@@ -237,442 +229,112 @@ ID записи: <id>
 0-5%    -> 0
 ```
 
-## Формат оценки
+## Workflow ассессмент-центра
 
-Для каждой компетенции YandexGPT возвращает:
-
-```json
-{
-  "name": "Название компетенции",
-  "manifested": true,
-  "score": 0,
-  "evidence": ["точная цитата из транскрипта"],
-  "comment": "краткое пояснение"
-}
-```
-
-Также возвращаются:
-
-```json
-{
-  "overall_summary": "общий вывод",
-  "risks": ["риски"],
-  "recommendations": ["что уточнить дальше"]
-}
-```
-
-## Компетенции
-
-Список компетенций сейчас задан в `bot/config.py`:
+Основная цепочка:
 
 ```text
-Стратегическое мышление
-Лидерство и влияние
-Принятие решений
-Коммуникация
-Управление командой
-Ориентация на результат
-Адаптивность
-Эмоциональный интеллект
+/create_center <название>
+/add_participant <center_id> <ФИО>
+/add_exercise <participant_id> <название упражнения>
+отправить аудио
+выбрать STT
+/attach_record <exercise_id> <record_id>
+отправить Excel-блокнот
+/attach_notebook <exercise_id> <notebook_id>
+/process_exercise <exercise_id>
+/generate_report <participant_id>
+/generate_ipr <participant_id>
 ```
 
-Это placeholder-список. Его можно доработать под методологию заказчика.
+Отчет и ИПР формируются в `.docx` через `python-docx` в `bot/services/reports.py`.
 
-## Yandex Cloud
+## Текущее серверное состояние
 
-Создан сервисный аккаунт:
+Актуальный рабочий сервер:
 
 ```text
-hr-assessment-bot
+85.239.35.73
 ```
 
-Назначены роли:
-
-```text
-ai.speechkit-stt.user
-ai.languageModels.user
-storage.uploader
-storage.editor
-```
-
-Создан Object Storage bucket:
-
-```text
-hr-assessment-audio-b1geibs546ki0iddqed8
-```
-
-Файлы для async SpeechKit загружаются с префиксом:
-
-```text
-interviews/
-```
-
-Для настройки Yandex Cloud есть инструкция:
-
-```text
-docs/YANDEX_CLOUD_SETUP.md
-```
-
-И PowerShell-скрипт:
-
-```text
-scripts/setup_yandex_cloud.ps1
-```
-
-## Переменные окружения
-
-Пример лежит в:
-
-```text
-.env.example
-```
-
-На сервере используется `.env`, который не хранится в Git.
-
-Основные переменные:
-
-```dotenv
-BOT_TOKEN=
-YANDEX_SPEECHKIT_API_KEY=
-YANDEX_GPT_API_KEY=
-YANDEX_FOLDER_ID=
-YANDEX_STORAGE_BUCKET=
-YANDEX_STORAGE_ACCESS_KEY_ID=
-YANDEX_STORAGE_SECRET_ACCESS_KEY=
-YANDEX_STORAGE_ENDPOINT=https://storage.yandexcloud.net
-YANDEX_STORAGE_PREFIX=interviews
-DATABASE_URL=sqlite+aiosqlite:///./data/app.db
-LOG_LEVEL=INFO
-DOWNLOAD_DIR=./data/uploads
-TELEGRAM_API_BASE_URL=http://127.0.0.1:8081
-TELEGRAM_API_IS_LOCAL=true
-TELEGRAM_DOWNLOAD_MAX_BYTES=2000000000
-TELEGRAM_FILE_REQUEST_TIMEOUT_SECONDS=900
-TELEGRAM_FILE_DOWNLOAD_TIMEOUT_SECONDS=900
-TELEGRAM_FILE_DOWNLOAD_ATTEMPTS=3
-TELEGRAM_FILE_DOWNLOAD_RETRY_DELAY_SECONDS=15
-YANDEX_GPT_MODEL_URI=gpt://<folder_id>/yandexgpt/rc
-SPEECHKIT_SYNC_MAX_BYTES=1000000
-SPEECHKIT_ASYNC_POLL_INTERVAL_SECONDS=10
-SPEECHKIT_ASYNC_TIMEOUT_SECONDS=7200
-```
-
-Важно: реальные токены и ключи не должны попадать в Git.
-
-## База данных
-
-SQLite-файл:
-
-```text
-data/app.db
-```
-
-Таблицы:
-
-### interview_records
-
-Хранит:
-
-- id записи;
-- chat_id;
-- user_id HR-а;
-- Telegram file_id;
-- тип файла;
-- путь к локальному файлу;
-- транскрипт;
-- дату создания.
-
-### assessment_results
-
-Хранит:
-
-- id оценки;
-- record_id;
-- chat_id;
-- user_id HR-а;
-- JSON-результат оценки;
-- summary;
-- дату создания.
-
-### observer_notebooks
-
-Хранит:
-
-- id блокнота;
-- chat_id;
-- user_id HR-а;
-- Telegram file_id;
-- имя файла;
-- путь к локальному `.xlsx`;
-- дату загрузки.
-
-### notebook_fill_results
-
-Хранит:
-
-- id результата;
-- record_id;
-- notebook_id;
-- путь к заполненному `.xlsx`;
-- JSON с оценками индикаторов и уровнями компетенций;
-- дату создания.
-
-### media_processing_jobs
-
-Хранит:
-
-- id задачи;
-- chat_id и user_id;
-- Telegram file_id;
-- тип файла, имя и размер;
-- статус `queued` / `processing` / `completed` / `failed`;
-- ссылку на созданную запись `record_id`;
-- текст ошибки;
-- даты создания, старта и завершения.
-
-Миграции:
-
-```bash
-python -m alembic upgrade head
-```
-
-## Сервер
-
-Сервер Timeweb:
-
-```text
-Ubuntu 24.04
-2 CPU
-4 GB RAM
-50 GB NVMe
-```
-
-Проект развернут в:
+Проект:
 
 ```text
 /opt/asses
 ```
 
-Виртуальное окружение:
+Бот:
 
 ```text
-/opt/asses/.venv
+systemd service: asses-bot
 ```
 
-Systemd service:
-
-```text
-asses-bot
-```
-
-Локальный Telegram Bot API Server:
+Локальный Telegram Bot API:
 
 ```text
 Docker container: telegram-bot-api
-Endpoint: http://127.0.0.1:8081
-Data dir: /opt/telegram-bot-api/data
-Temp dir: /opt/telegram-bot-api/temp
-Host symlink: /var/lib/telegram-bot-api -> /opt/telegram-bot-api/data
-SSH port: 22222
+endpoint: http://127.0.0.1:8081
+mode: --local
 ```
 
-Рабочий запуск контейнера сейчас использует `--network host`, потому что при Docker NAT
-локальный `telegram-bot-api` зависал на `getMe` и нестабильно ходил в Telegram MTProto.
-
-Админ-панель доступна прямо в Telegram:
-
-```text
-/admin
-```
-
-Пароль по умолчанию задается переменной:
-
-```text
-ADMIN_BOT_PASSWORD=1172
-```
-
-После ввода пароля бот показывает статистику и inline-кнопки для просмотра и удаления записей, блокнотов, оценок и заполненных файлов.
-
-## Команды эксплуатации
-
-Статус бота:
+Проверка бота:
 
 ```bash
-systemctl status asses-bot --no-pager
+journalctl -u asses-bot -n 80 --no-pager
 ```
 
-Логи:
+Live logs:
 
 ```bash
 journalctl -u asses-bot -f
 ```
 
-Последние логи:
-
-```bash
-journalctl -u asses-bot -n 100 --no-pager
-```
-
-Перезапуск:
-
-```bash
-systemctl restart asses-bot
-```
-
-Остановка:
-
-```bash
-systemctl stop asses-bot
-```
-
-Запуск:
-
-```bash
-systemctl start asses-bot
-```
-
-Обновление кода с GitHub:
+Обновление на сервере:
 
 ```bash
 cd /opt/asses
 git pull
-. .venv/bin/activate
-pip install -r requirements.txt
 python -m alembic upgrade head
 systemctl restart asses-bot
+journalctl -u asses-bot -n 80 --no-pager
 ```
 
-Открыть Telegram-админку:
-
-```text
-/admin
-```
-
-Логи локального Telegram Bot API:
-
-```bash
-docker logs --tail 120 telegram-bot-api
-```
-
-Проверить локальный Telegram API:
-
-```bash
-cd /opt/asses
-set -a
-. ./.env
-set +a
-curl -sS --max-time 30 "http://127.0.0.1:8081/bot${BOT_TOKEN}/getMe"
-echo
-```
-
-## Что уже проверено
-
-- Бот успешно стартует на сервере.
-- Polling работает.
-- `/start` отвечает.
-- Локальный Telegram Bot API отвечает на `getMe`.
-- Большой MP3-файл около 61 MB успешно принят из Telegram через локальный Bot API.
-- SpeechKit async успешно расшифровал запись примерно на 25 минут, транскрипт около 33 000 символов.
-- `/assess` успешно сформировал и отправил оценку по расшифрованной записи.
-- Excel-сервис проверен на тестовом блокноте: индикаторы извлекаются, колонки D/E/F заполняются, уровень считается корректно.
-- YandexGPT smoke-test работает.
-- Object Storage upload smoke-test был проверен локально.
-- Alembic migration применена на сервере.
-- `.env` на сервере создан и закрыт правами `600`.
-
-## Важные исправления по ходу работы
-
-### Telegram HTML parse mode
-
-Сначала глобально был включен `parse_mode=HTML`. Из-за текста `/assess <ID>` Telegram воспринимал `<ID>` как HTML-тег и падал с ошибкой:
-
-```text
-Bad Request: can't parse entities: Unsupported start tag "id"
-```
-
-Исправление: глобальный HTML parse mode отключен в `bot/main.py`.
-
-### Pydantic env parsing
-
-В `bot/config.py` поля окружения переведены на `validation_alias`, чтобы `.env` корректно читался в Pydantic v2 / pydantic-settings.
-
-### SQLite data directory
-
-Перед миграциями на сервере нужно создать:
-
-```bash
-mkdir -p /opt/asses/data/uploads
-```
-
-Иначе SQLite не сможет создать файл `data/app.db`.
+## Важные проблемы, которые уже решили
 
 ### Telegram file is too big
 
-При отправке MP3 около 50-60 MB обычный облачный Telegram Bot API возвращал:
-
-```text
-Bad Request: file is too big
-```
-
-Причина: публичный `api.telegram.org` не отдаёт боту такие файлы через `getFile`.
+Обычный `api.telegram.org` не отдавал боту файлы около 50-60 MB через `getFile`.
 
 Решение:
 
-- получены `api_id` и `api_hash` через `https://my.telegram.org/apps`;
 - поднят локальный Telegram Bot API Server;
 - aiogram переключен на `TELEGRAM_API_BASE_URL=http://127.0.0.1:8081`;
-- бот выведен из облачного API через `logOut`;
-- лимит `TELEGRAM_DOWNLOAD_MAX_BYTES` поднят до `2000000000`.
+- бот выведен из облачного Bot API через `logOut`;
+- увеличены Telegram timeout/retry.
 
-### SSH brute force and port 22222
+### Docker bridge зависал на local Bot API
 
-На сервер массово шли попытки входа по SSH на порт `22`, из-за чего `sshd`
-включал `MaxStartups throttling`, а нормальное подключение зависало на `banner exchange`.
+В bridge network `getMe` зависал или контейнер был `unhealthy`.
 
 Решение:
 
-- добавлен SSH-порт `22222`;
-- подключение выполняется командой:
+- запуск `telegram-bot-api` через `--network host`;
+- `--http-ip-address=127.0.0.1`;
+- проверка через локальный `/getMe`.
 
-```bash
-ssh -p 22222 root@5.42.107.42
-```
+### Local Bot API отдавал путь внутри контейнера
 
-В дальнейшем лучше закрыть `22`, оставить доступ по ключам и ограничить SSH по IP.
-
-### Local Telegram Bot API Docker NAT
-
-Первый запуск `telegram-bot-api` в Docker bridge network отвечал на `/`, но `getMe`
-зависал или контейнер был `unhealthy`. Также при неверном `api_hash` локальный API
-возвращал:
+В режиме `--local` путь был вида:
 
 ```text
-Unauthorized: invalid api-id/api-hash
+/var/lib/telegram-bot-api/...
 ```
 
-Что сделали:
-
-- исправили `api_hash`;
-- очистили старые state-директории;
-- перезапустили контейнер в `--network host`;
-- включили `--http-ip-address=127.0.0.1`;
-- проверили `getMe`, он стал отвечать `ok: true`.
-
-### Local Telegram Bot API local file path
-
-После включения `--local` Telegram Bot API возвращал путь вида:
+А реальные файлы лежали в:
 
 ```text
-/var/lib/telegram-bot-api/<bot_token>/music/file_0.mp3
+/opt/telegram-bot-api/data
 ```
-
-Но Python-бот работает на хосте, а файл физически лежал в:
-
-```text
-/opt/telegram-bot-api/data/
-```
-
-Из-за этого был `FileNotFoundError`.
 
 Решение:
 
@@ -681,127 +343,112 @@ mkdir -p /var/lib
 ln -sfn /opt/telegram-bot-api/data /var/lib/telegram-bot-api
 ```
 
-### Telegram media timeout and retry
+### Старый сервер Timeweb плохо ходил во внешние API
 
-Для больших MP3 локальный Telegram Bot API иногда долго готовит файл, поэтому стандартные
-timeout aiogram давали:
+Сервер `5.42.107.42` периодически не мог нормально подключаться к NeuroAPI/AI Tunnel и имел проблемы с SSH/сетями. Работу перенесли на сервер `85.239.35.73`, где AI Tunnel успешно отвечал.
 
-```text
-Request timeout error
-ServerDisconnectedError
-```
+### NeuroAPI Whisper
 
-Решение:
+На новом сервере NeuroAPI стал доступен, но сам провайдер иногда возвращал HTTP 500. Поэтому NeuroAPI Whisper оставлен как тестовая кнопка, а основной путь пока AI Tunnel Whisper.
 
-- добавлены настройки:
-  - `TELEGRAM_FILE_REQUEST_TIMEOUT_SECONDS=900`;
-  - `TELEGRAM_FILE_DOWNLOAD_TIMEOUT_SECONDS=900`;
-  - `TELEGRAM_FILE_DOWNLOAD_ATTEMPTS=3`;
-  - `TELEGRAM_FILE_DOWNLOAD_RETRY_DELAY_SECONDS=15`;
-- добавлены retry для `get_file` и `download_file`.
+### AI Tunnel file limit
 
-### YandexGPT JSON Schema required fields
-
-YandexGPT structured output отклонял Pydantic JSON Schema:
+AI Tunnel Whisper возвращал:
 
 ```text
-Invalid JSON Schema: all fields must be required, 'recommendations' is optional
+HTTP 413: файл не должен превышать 25MB
 ```
 
-Причина: в режиме structured output YandexGPT требует, чтобы все поля объектов были
-перечислены в `required`, даже если в Pydantic у них есть default/default_factory.
+Добавлено ffmpeg-сжатие перед отправкой. Полной нарезки длинных файлов на чанки пока нет.
 
-Решение:
+### Роли путались между ролевым сотрудником и оцениваемым
 
-- в `bot/services/yandex_gpt.py` добавлена нормализация JSON Schema;
-- все поля объектов рекурсивно добавляются в `required`;
-- после этого `/assess` успешно вернул оценку.
+Проблема: модель могла считать `Участник` того, кто отвечает от первого лица и жалуется на ситуацию, хотя это ролевой сотрудник, а оцениваемый - руководитель.
 
-## Ограничения текущей версии
+Решения:
 
-- Для `.wav`, `.m4a`, `.aac`, `.mp4`, `.docx`, `.pdf` пока нет автоматической конвертации/извлечения аудио.
-- Async SpeechKit сейчас поддерживает в коде:
-  - `.ogg`
-  - `.oga`
-  - `.opus`
-  - `.mp3`
-  - `.pcm`
-  - `.lpcm`
-  - `.raw`
-- SQLite подходит для старта, но при росте нагрузки лучше перейти на PostgreSQL.
-- Нет веб-дашборда.
-- Нет PDF-отчетов.
-- Нет отдельной админки критериев.
-- Есть простая очередь задач в SQLite и worker внутри процесса бота. Для высокой нагрузки лучше вынести worker в отдельный процесс и добавить Redis/Celery/Arq.
-- Формирование индивидуального отчета и ИПР реализовано как `.docx`; PDF-экспорт можно добавить через LibreOffice.
-- Локальный Telegram Bot API настроен вручную через Docker run. Лучше вынести его в systemd unit или docker compose.
-- Docker container `telegram-bot-api` может отображаться как `unhealthy`, хотя HTTP API работает. Healthcheck образа нужно заменить или отключить.
-- `api_hash` был засвечен в переписке во время настройки. Для продакшена лучше перевыпустить данные приложения Telegram, если это возможно.
+- усилен prompt в `bot/services/role_labeling.py`;
+- добавлен контекст участника после `/attach_record`;
+- добавлен `raw_transcript`;
+- `/assess` и notebook-анализ используют только строки `Участник:`.
 
-## Что нужно от заказчика для следующего этапа
+## Что сейчас не хватает
 
-Нужны реальные или тестовые файлы интервью:
+### 1. Нарезка аудио на чанки — сделано
 
-- голосовые сообщения Telegram;
-- MP3/Ogg Opus аудиофайлы;
-- записи разной длины;
-- желательно несколько интервью разного качества звука.
+Реализовано в `bot/services/audio_chunking.py` и `prepare_audio_chunks_for_upload`.
+Применяется только к AI Tunnel (у него жёсткий лимит 25 MB на запрос); NeuroAPI и Yandex работают как раньше.
 
-На этих файлах нужно проверить:
+- сначала сжатие под лимит (как раньше);
+- если не влезает — нарезка через ffmpeg с overlap (`WHISPER_CHUNK_OVERLAP_SECONDS`, по умолчанию 15с);
+- длина чанка считается из битрейта и лимита провайдера с запасом (`WHISPER_CHUNK_SIZE_SAFETY`);
+- каждая часть расшифровывается отдельно, transcript склеивается с удалением дублей на стыках.
 
-- качество распознавания SpeechKit;
-- качество evidence-цитат;
-- адекватность оценок 0-5;
-- полноту списка компетенций;
-- удобство формата отчета для HR.
+Возможные доработки на будущее: резать по тишине (silencedetect) вместо фиксированного шага;
+сохранять метаданные чанков в БД; чистить временные mp3-файлы чанков после обработки.
 
-Также нужны материалы ассессмент-центра под реальные упражнения:
+### 2. Персистентная очередь для LLM-задач
 
-- Excel-блокноты наблюдателя по каждому упражнению;
-- инструкции участников;
-- инструкции наблюдателей;
-- инструкции ведущего;
-- финальные шаблоны индивидуального отчета и ИПР;
-- утвержденная шкала компетенций и список индикаторов.
+Медиа уже обрабатывается через `MediaProcessingJob`, но `/assess`, `/fill_notebook` и переуточнение ролей после `/attach_record` сейчас запускаются через `asyncio.create_task`.
 
-## Возможные следующие доработки
+Это быстрее для handler, но задача не переживет restart процесса.
 
-- Перевести `telegram-bot-api` в docker compose или systemd unit с документированным запуском.
-- Закрыть SSH-порт `22`, оставить `22222`, настроить вход по SSH-ключу и запретить password-login для root.
-- Автоматическая конвертация WAV/M4A/MP4 через ffmpeg.
-- PDF-экспорт отчетов через LibreOffice.
-- Web dashboard для HR.
-- Расширенная админка с фильтрами, скачиванием файлов и ролями доступа.
-- PostgreSQL вместо SQLite.
-- Очередь задач через Redis/RQ/Celery/Arq.
-- Webhook вместо polling.
-- Настройка критериев через админ-команды.
-- Экспорт отчетов в Google Sheets / Excel.
-- Роли пользователей и доступы.
-- Хранение оригиналов файлов только в Object Storage без локального дубля.
-- Очистка старых файлов по расписанию.
-- Мониторинг и алерты.
+Нужно:
 
-## Текущее состояние на 31.05.2026
+- добавить отдельную таблицу для LLM/job задач или расширить текущую;
+- вынести worker в отдельный процесс или хотя бы общий job worker;
+- хранить статусы, ошибки, retry.
 
-Рабочий статус:
+### 3. `/process_exercise` все еще синхронный
 
-- бот развернут на Timeweb и запущен через `systemd`;
-- локальный Telegram Bot API Server поднят в Docker через `--network host`;
-- большие MP3 из Telegram проходят через локальный Bot API;
-- проверен файл около 61 MB / 25 минут;
-- SpeechKit async успешно распознал запись;
-- YandexGPT успешно сформировал оценку после исправления JSON Schema;
-- бот отправил результат оценки в Telegram.
+По просьбе владельца проекта этот пункт пока не трогали. Команда все еще выполняет LLM/Excel прямо в handler.
 
-Текущий основной технический риск:
+### 4. Админка слабая
 
-- очередь задач уже отделила длинную обработку от Telegram handler, но worker пока работает внутри того же процесса, что и polling. Для нескольких одновременных больших записей лучше вынести worker в отдельный процесс и добавить управление конкурентностью.
+По просьбе владельца проекта пока не трогали.
 
-Ближайшие рекомендуемые шаги:
+Текущие ограничения:
 
-- стабилизировать инфраструктуру: docker compose/systemd для `telegram-bot-api`, SSH-ключи, закрыть порт `22`;
-- добавить ffmpeg-конвертацию популярных аудио/видео форматов;
-- вынести worker в отдельный процесс и добавить управление несколькими задачами;
-- протестировать реальные блокноты наблюдателя заказчика;
-- доработать DOCX/PDF отчет и ИПР по финальным шаблонам заказчика.
+- один общий пароль;
+- нет `ADMIN_USER_IDS`;
+- нет TTL сессии;
+- удаление всех данных доступно любому, кто знает пароль.
+
+### 5. Отчеты и ИПР пока шаблонные
+
+DOCX уже генерируется, но это еще не полноценное воспроизведение шаблонов заказчика.
+
+Нужно:
+
+- точнее повторить структуру PDF/DOCX шаблонов заказчика;
+- добавить PDF-export через LibreOffice;
+- улучшить формулировки рекомендаций на основе методических материалов.
+
+### 6. Критерии и компетенции пока не управляются из интерфейса
+
+Сейчас список компетенций лежит в `bot/config.py`, а индикаторы берутся из Excel-блокнота.
+
+Нужно:
+
+- загрузка/редактирование шкал и критериев;
+- хранение версии критериев;
+- привязка критериев к упражнению/центру.
+
+### 7. Дублирование Whisper сервисов
+
+`aitunnel_whisper.py` и `neuroapi_whisper.py` почти одинаковые. По просьбе владельца проекта этот пункт пока не трогали.
+
+### 8. Старые миграции `stt_provider`
+
+В истории есть добавление, удаление и повторное добавление `stt_provider`. Это некрасиво, но на работающем сервере лучше не переписывать историю. По просьбе владельца проекта не трогали.
+
+## Актуальный рекомендуемый следующий шаг
+
+Нарезка длинного аудио на чанки для AI Tunnel/NeuroAPI Whisper реализована (см. техдолг п.1).
+Следующие полезные шаги:
+
+1. проверить chunking на реальной длинной записи (>100 минут) на сервере, где доступен ffmpeg/ffprobe;
+2. стабилизировать LLM queue;
+3. улучшить role labeling на тестовых записях;
+4. довести Excel notebook до формата заказчика;
+5. довести DOCX/PDF отчет и ИПР по шаблонам.

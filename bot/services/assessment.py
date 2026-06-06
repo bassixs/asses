@@ -7,6 +7,7 @@ from pydantic import BaseModel, Field, ValidationError, field_validator
 
 from bot.config import settings
 from bot.services.llm_json import LLMJSONError, complete_json_openai_compatible
+from bot.services.role_labeling import extract_participant_transcript
 from bot.services.yandex_gpt import complete_json
 
 logger = logging.getLogger(__name__)
@@ -44,7 +45,7 @@ def build_system_prompt() -> str:
 {competencies}
 
 Правила оценки:
-1. Используй только факты из транскрипта. Не додумывай биографию, мотивы или контекст.
+1. Используй только факты из транскрипта оцениваемого участника. Не додумывай биографию, мотивы или контекст.
 2. Для каждой компетенции верни:
    - name: название компетенции из списка;
    - manifested: true, если в транскрипте есть поведенческие индикаторы компетенции;
@@ -55,6 +56,7 @@ def build_system_prompt() -> str:
 4. Не используй общие похвалы. Каждая оценка должна быть связана с конкретной цитатой.
 5. Цитаты в evidence должны быть дословными фрагментами транскрипта, без пересказа.
 6. Не возвращай Markdown, XML или обычный текст. Только валидный JSON.
+7. Если во входе есть строки с ролями, оценивай только строки "Участник:". Строки "Ведущий:" запрещено использовать как evidence и как основание оценки.
 
 Формат ответа:
 {{
@@ -77,7 +79,8 @@ def build_system_prompt() -> str:
 async def analyze_transcript(transcript: str) -> dict[str, Any]:
     """Analyze transcript and return a validated dict."""
     system_prompt = build_system_prompt()
-    user_prompt = f"?????????? ????????:\n\n{transcript}"
+    participant_transcript = extract_participant_transcript(transcript)
+    user_prompt = f"Транскрипт оцениваемого участника:\n\n{participant_transcript}"
     if settings.analysis_llm_provider.lower().strip() == "yandex":
         raw_result = await complete_json(
             system_prompt=system_prompt,

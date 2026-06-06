@@ -5,6 +5,7 @@ import logging
 from pathlib import Path
 
 from bot.config import settings
+from bot.services.audio_chunking import AudioChunk, split_audio_into_chunks
 
 logger = logging.getLogger(__name__)
 
@@ -14,6 +15,7 @@ class AudioPreprocessingError(RuntimeError):
 
 
 async def prepare_audio_for_upload(file_path: Path, max_bytes: int, provider_name: str) -> Path:
+    """Compress audio to fit under max_bytes. Used by providers without chunking."""
     if not file_path.exists():
         raise AudioPreprocessingError(f"File not found: {file_path}")
 
@@ -52,6 +54,61 @@ async def prepare_audio_for_upload(file_path: Path, max_bytes: int, provider_nam
     raise AudioPreprocessingError(
         f"Could not prepare audio under {max_bytes} bytes for {provider_name}: {last_error}",
     )
+
+
+async def prepare_audio_chunks_for_upload(file_path: Path, max_bytes: int, provider_name: str) -> list[Path]:
+    """Return upload-ready audio parts under max_bytes.
+
+    Returns a single element when the file fits as-is or after whole-file compression,
+    and multiple overlapping chunks when even the most aggressive compression is too large.
+    Used by AI Tunnel, which enforces a hard 25 MB per-request limit.
+    """
+    if not file_path.exists():
+        raise AudioPreprocessingError(f"File not found: {file_path}")
+
+    original_size = file_path.stat().st_size
+    if original_size <= max_bytes:
+        return [file_path]
+
+    bitrates = _parse_bitrates(settings.whisper_compression_bitrates_kbps)
+    if not bitrates:
+        raise AudioPreprocessingError("No valid Whisper compression bitrates configured")
+
+    logger.info(
+        "Preparing audio for %s: original_size=%s max_bytes=%s bitrates=%s",
+        provider_name,
+        original_size,
+        max_bytes,
+        bitrates,
+    )
+
+    smallest_size = 0
+    for bitrate in bitrates:
+        output_path = _compressed_output_path(file_path, provider_name, bitrate)
+        await _run_ffmpeg(file_path, output_path, bitrate)
+        compressed_size = output_path.stat().st_size if output_path.exists() else 0
+        logger.info(
+            "Compressed audio for %s: bitrate=%sk size=%s path=%s",
+            provider_name,
+            bitrate,
+            compressed_size,
+            output_path,
+        )
+        if 0 < compressed_size <= max_bytes:
+            return [output_path]
+        smallest_size = compressed_size
+
+    if not settings.whisper_chunk_enabled:
+        raise AudioPreprocessingError(
+            f"Audio still {smallest_size} bytes after compression (limit {max_bytes}) "
+            f"for {provider_name} and chunking is disabled",
+        )
+
+    try:
+        chunks: list[AudioChunk] = await split_audio_into_chunks(file_path, max_bytes, provider_name)
+    except Exception as exc:  # noqa: BLE001 - re-wrap into the preprocessing error type
+        raise AudioPreprocessingError(f"Could not split audio into chunks for {provider_name}: {exc}") from exc
+    return [chunk.path for chunk in chunks]
 
 
 def _parse_bitrates(raw_value: str) -> list[int]:

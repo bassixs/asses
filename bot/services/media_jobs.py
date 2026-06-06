@@ -14,7 +14,12 @@ from bot.config import settings
 from bot.database import async_session_maker
 from bot.keyboards import transcript_actions_keyboard
 from bot.models import InterviewRecord, MediaProcessingJob
-from bot.services.audio_preprocessing import AudioPreprocessingError, prepare_audio_for_upload
+from bot.services.audio_chunking import merge_chunk_transcripts
+from bot.services.audio_preprocessing import (
+    AudioPreprocessingError,
+    prepare_audio_chunks_for_upload,
+    prepare_audio_for_upload,
+)
 from bot.services.aitunnel_whisper import AITunnelWhisperError, transcribe_file_aitunnel_whisper
 from bot.services.neuroapi_whisper import NeuroAPIWhisperError, transcribe_file_neuroapi_whisper
 from bot.services.role_labeling import RoleLabelingError, label_transcript_roles
@@ -112,10 +117,10 @@ async def _process_job(bot: Bot, job_id: int) -> None:
 
         provider_name = _provider_name(job.stt_provider)
         await bot.send_message(job.chat_id, f"Задача #{job.id}: отправляю аудио на расшифровку через {provider_name}...")
-        transcript = await _transcribe_with_provider(local_path, job.stt_provider)
-        transcript = await _label_roles_or_keep_raw(bot, job, transcript)
+        raw_transcript = await _transcribe_with_provider(bot, job, local_path, job.stt_provider)
+        transcript = await _label_roles_or_keep_raw(bot, job, raw_transcript)
 
-        record_id = await _create_record(job, local_path, transcript)
+        record_id = await _create_record(job, local_path, raw_transcript, transcript)
         transcript_path = await build_transcript_text_file(transcript=transcript, record_id=record_id)
         await _mark_completed(job.id, record_id, transcript_path)
 
@@ -148,7 +153,7 @@ async def _process_job(bot: Bot, job_id: int) -> None:
         await bot.send_message(job.chat_id, f"Задача #{job.id}: произошла ошибка при обработке файла.")
 
 
-async def _create_record(job: ClaimedMediaJob, local_path: Path, transcript: str) -> int:
+async def _create_record(job: ClaimedMediaJob, local_path: Path, raw_transcript: str, transcript: str) -> int:
     async with async_session_maker() as session:
         record = InterviewRecord(
             chat_id=job.chat_id,
@@ -158,6 +163,7 @@ async def _create_record(job: ClaimedMediaJob, local_path: Path, transcript: str
             file_type=job.file_type,
             file_path=str(local_path),
             stt_provider=job.stt_provider,
+            raw_transcript=raw_transcript,
             transcript=transcript,
         )
         session.add(record)
@@ -196,14 +202,10 @@ async def _load_claimed_job(job_id: int) -> ClaimedMediaJob | None:
         )
 
 
-async def _transcribe_with_provider(local_path: Path, provider: str) -> str:
+async def _transcribe_with_provider(bot: Bot, job: ClaimedMediaJob, local_path: Path, provider: str) -> str:
     if provider == "aitunnel":
-        upload_path = await prepare_audio_for_upload(
-            local_path,
-            max_bytes=settings.aitunnel_max_upload_bytes,
-            provider_name="aitunnel",
-        )
-        return await transcribe_file_aitunnel_whisper(upload_path)
+        # AI Tunnel enforces a hard 25 MB per-request limit, so long audio is chunked.
+        return await _transcribe_aitunnel_chunked(bot, job, local_path)
     if provider == "neuroapi":
         upload_path = await prepare_audio_for_upload(
             local_path,
@@ -212,6 +214,26 @@ async def _transcribe_with_provider(local_path: Path, provider: str) -> str:
         )
         return await transcribe_file_neuroapi_whisper(upload_path)
     return await transcribe_file(local_path)
+
+
+async def _transcribe_aitunnel_chunked(bot: Bot, job: ClaimedMediaJob, local_path: Path) -> str:
+    parts = await prepare_audio_chunks_for_upload(
+        local_path,
+        max_bytes=settings.aitunnel_max_upload_bytes,
+        provider_name="aitunnel",
+    )
+    if len(parts) == 1:
+        return await transcribe_file_aitunnel_whisper(parts[0])
+
+    await bot.send_message(
+        job.chat_id,
+        f"Задача #{job.id}: запись длинная, разбил на {len(parts)} частей и расшифрую по очереди.",
+    )
+    transcripts: list[str] = []
+    for index, part in enumerate(parts, start=1):
+        await bot.send_message(job.chat_id, f"Задача #{job.id}: расшифровываю часть {index}/{len(parts)}...")
+        transcripts.append(await transcribe_file_aitunnel_whisper(part))
+    return merge_chunk_transcripts(transcripts)
 
 
 async def _label_roles_or_keep_raw(bot: Bot, job: ClaimedMediaJob, transcript: str) -> str:

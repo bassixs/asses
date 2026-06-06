@@ -1,7 +1,10 @@
 from __future__ import annotations
 
+import asyncio
+from html import escape
 from pathlib import Path
 
+from aiogram import Bot
 from aiogram import Router
 from aiogram.filters import Command
 from aiogram.types import FSInputFile, Message
@@ -9,6 +12,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from bot.config import settings
+from bot.database import async_session_maker
 from bot.models import (
     AssessmentCenter,
     DevelopmentPlan,
@@ -30,6 +34,8 @@ from bot.services.reports import (
     save_development_plan_docx,
     save_participant_report_docx,
 )
+from bot.services.role_labeling import RoleLabelingError, label_transcript_roles
+from bot.services.transcript_export import build_transcript_text_file
 
 router = Router()
 
@@ -164,7 +170,7 @@ async def cmd_exercises(message: Message, session: AsyncSession) -> None:
 
 
 @router.message(Command("attach_record"))
-async def cmd_attach_record(message: Message, session: AsyncSession) -> None:
+async def cmd_attach_record(message: Message, bot: Bot, session: AsyncSession) -> None:
     if message.from_user is None:
         await message.answer("Не удалось определить пользователя.")
         return
@@ -182,7 +188,55 @@ async def cmd_attach_record(message: Message, session: AsyncSession) -> None:
         return
     record.exercise_id = exercise.id
     await session.commit()
-    await message.answer(f"Запись #{record.id} привязана к упражнению #{exercise.id}.")
+    await message.answer(f"Запись #{record.id} привязана к упражнению #{exercise.id}. Уточняю роли по участнику упражнения...")
+    asyncio.create_task(_relabel_record_roles_after_attach(
+        bot=bot,
+        chat_id=message.chat.id,
+        user_id=message.from_user.id,
+        record_id=record.id,
+        exercise_id=exercise.id,
+    ))
+
+
+async def _relabel_record_roles_after_attach(
+    *,
+    bot: Bot,
+    chat_id: int,
+    user_id: int,
+    record_id: int,
+    exercise_id: int,
+) -> None:
+    async with async_session_maker() as session:
+        exercise = await session.get(Exercise, exercise_id)
+        record = await session.scalar(
+            select(InterviewRecord).where(InterviewRecord.id == record_id, InterviewRecord.user_id == user_id)
+        )
+        if exercise is None or record is None:
+            await bot.send_message(chat_id, "Не удалось переуточнить роли: упражнение или запись не найдены.")
+            return
+
+        participant = await session.get(Participant, exercise.participant_id)
+        try:
+            source_transcript = record.raw_transcript or record.transcript
+            record.transcript = await label_transcript_roles(
+                source_transcript,
+                assessed_participant_name=participant.full_name if participant else None,
+                exercise_name=exercise.name,
+            )
+            transcript_path = await build_transcript_text_file(transcript=record.transcript, record_id=record.id)
+            record.transcript_file_path = str(transcript_path)
+            await session.commit()
+            await bot.send_message(
+                chat_id,
+                f"Роли в записи #{record.id} обновлены с учетом оцениваемого участника"
+                f"{f' ({participant.full_name})' if participant else ''}.",
+            )
+        except RoleLabelingError as exc:
+            await session.commit()
+            await bot.send_message(
+                chat_id,
+                f"Запись привязана, но роли не удалось переуточнить автоматически: {escape(str(exc), quote=False)}",
+            )
 
 
 @router.message(Command("attach_notebook"))

@@ -125,10 +125,16 @@ class Settings(BaseSettings):
     neuroapi_force_ipv4: bool = Field(default=True, validation_alias="NEUROAPI_FORCE_IPV4")
     neuroapi_max_upload_bytes: int = Field(default=25_000_000, validation_alias="NEUROAPI_MAX_UPLOAD_BYTES")
     ffmpeg_binary: str = Field(default="ffmpeg", validation_alias="FFMPEG_BINARY")
+    ffprobe_binary: str = Field(default="ffprobe", validation_alias="FFPROBE_BINARY")
     whisper_compression_bitrates_kbps: str = Field(
         default="32,24,16",
         validation_alias="WHISPER_COMPRESSION_BITRATES_KBPS",
     )
+    whisper_chunk_enabled: bool = Field(default=True, validation_alias="WHISPER_CHUNK_ENABLED")
+    whisper_chunk_bitrate_kbps: int = Field(default=32, validation_alias="WHISPER_CHUNK_BITRATE_KBPS")
+    whisper_chunk_overlap_seconds: int = Field(default=15, validation_alias="WHISPER_CHUNK_OVERLAP_SECONDS")
+    whisper_chunk_min_seconds: int = Field(default=60, validation_alias="WHISPER_CHUNK_MIN_SECONDS")
+    whisper_chunk_size_safety: float = Field(default=0.85, validation_alias="WHISPER_CHUNK_SIZE_SAFETY")
     role_labeling_enabled: bool = Field(default=True, validation_alias="ROLE_LABELING_ENABLED")
     role_labeling_provider: str = Field(default="neuroapi", validation_alias="ROLE_LABELING_PROVIDER")
     role_labeling_model: str = Field(default="deepseek-v4-flash", validation_alias="ROLE_LABELING_MODEL")

@@ -1,16 +1,19 @@
 from __future__ import annotations
 
+import asyncio
 from html import escape
 import logging
 from typing import Any
 
 from aiogram import F, Router
 from aiogram.filters import Command
+from aiogram import Bot
 from aiogram.types import CallbackQuery, Message
 from sqlalchemy import Select, desc, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
+from bot.database import async_session_maker
 from bot.keyboards import assessment_actions_keyboard
 from bot.models import AssessmentResult, InterviewRecord
 from bot.services.assessment import analyze_transcript
@@ -126,7 +129,7 @@ async def _run_assessment(
 
 
 @router.message(Command("assess"))
-async def cmd_assess(message: Message, session: AsyncSession) -> None:
+async def cmd_assess(message: Message, bot: Bot) -> None:
     if message.from_user is None:
         await message.answer("Не удалось определить пользователя.")
         return
@@ -136,41 +139,45 @@ async def cmd_assess(message: Message, session: AsyncSession) -> None:
         await message.answer("Укажите ID записи: /assess 123 или ответьте командой на сообщение с ID.")
         return
 
-    await message.answer("Запускаю оценку компетенций. Это может занять пару минут...")
-    assessment, text = await _run_assessment(
+    await message.answer("Запускаю оценку компетенций. Я пришлю результат отдельным сообщением.")
+    asyncio.create_task(_run_assessment_and_send(
+        bot=bot,
         record_id=record_id,
         user_id=message.from_user.id,
         chat_id=message.chat.id,
-        session=session,
-    )
-    chunks = _split_message(text)
-    for chunk in chunks[:-1]:
-        await message.answer(chunk)
-    await message.answer(
-        chunks[-1],
-        reply_markup=assessment_actions_keyboard(record_id) if assessment else None,
-    )
+    ))
 
 
 @router.callback_query(F.data.startswith("assess:"))
-async def callback_assess(callback: CallbackQuery, session: AsyncSession) -> None:
+async def callback_assess(callback: CallbackQuery, bot: Bot) -> None:
     if callback.from_user is None or callback.message is None:
         await callback.answer("Не удалось обработать запрос", show_alert=True)
         return
 
     record_id = int(callback.data.split(":", maxsplit=1)[1])
     await callback.answer("Оценка запущена")
-    await callback.message.answer("Запускаю оценку компетенций. Это может занять пару минут...")
-    assessment, text = await _run_assessment(
+    await callback.message.answer("Запускаю оценку компетенций. Я пришлю результат отдельным сообщением.")
+    asyncio.create_task(_run_assessment_and_send(
+        bot=bot,
         record_id=record_id,
         user_id=callback.from_user.id,
         chat_id=callback.message.chat.id,
-        session=session,
-    )
+    ))
+
+
+async def _run_assessment_and_send(*, bot: Bot, record_id: int, user_id: int, chat_id: int) -> None:
+    async with async_session_maker() as session:
+        assessment, text = await _run_assessment(
+            record_id=record_id,
+            user_id=user_id,
+            chat_id=chat_id,
+            session=session,
+        )
     chunks = _split_message(text)
     for chunk in chunks[:-1]:
-        await callback.message.answer(chunk)
-    await callback.message.answer(
+        await bot.send_message(chat_id, chunk)
+    await bot.send_message(
+        chat_id,
         chunks[-1],
         reply_markup=assessment_actions_keyboard(record_id) if assessment else None,
     )

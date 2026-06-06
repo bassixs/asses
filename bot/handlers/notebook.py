@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import asyncio
 from html import escape
 import logging
 import re
@@ -12,6 +13,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from bot.config import settings
+from bot.database import async_session_maker
 from bot.models import InterviewRecord, NotebookFillResult, ObserverNotebook
 from bot.services.observer_notebook import (
     NotebookProcessingError,
@@ -97,7 +99,7 @@ async def handle_observer_notebook(message: Message, bot: Bot, session: AsyncSes
 
 
 @router.message(Command("fill_notebook"))
-async def cmd_fill_notebook(message: Message, session: AsyncSession) -> None:
+async def cmd_fill_notebook(message: Message, bot: Bot, session: AsyncSession) -> None:
     if message.from_user is None:
         await message.answer("Не удалось определить пользователя.")
         return
@@ -128,43 +130,78 @@ async def cmd_fill_notebook(message: Message, session: AsyncSession) -> None:
         await message.answer("Блокнот не найден или принадлежит другому пользователю.")
         return
 
-    await message.answer("Заполняю блокнот наблюдателя. Это может занять несколько минут...")
-    try:
-        input_path = Path(notebook.file_path)
-        indicators = extract_notebook_indicators(input_path)
-        report = await analyze_notebook_indicators(transcript=record.transcript, indicators=indicators)
-        output_path = settings.download_dir.parent / "reports" / f"filled_record_{record.id}_notebook_{notebook.id}.xlsx"
-        result_json = fill_observer_notebook(
-            input_path=input_path,
-            output_path=output_path,
-            indicators=indicators,
-            report=report,
-        )
-    except NotebookProcessingError as exc:
-        logger.exception("Notebook processing failed")
-        await message.answer(f"Не удалось заполнить блокнот: {escape(str(exc), quote=False)}")
-        return
-    except Exception:
-        logger.exception("Unexpected notebook filling error")
-        await message.answer("Произошла ошибка при заполнении блокнота. Подробности записаны в лог.")
-        return
-
-    fill_result = NotebookFillResult(
-        exercise_id=record.exercise_id if record.exercise_id == notebook.exercise_id else None,
-        record_id=record.id,
-        notebook_id=notebook.id,
+    await message.answer("Заполняю блокнот наблюдателя. Я пришлю готовый Excel отдельным сообщением.")
+    asyncio.create_task(_fill_notebook_and_send(
+        bot=bot,
         chat_id=message.chat.id,
         user_id=message.from_user.id,
-        output_path=str(output_path),
-        result_json=result_json,
-    )
-    session.add(fill_result)
-    await session.commit()
+        record_id=record.id,
+        notebook_id=notebook.id,
+    ))
 
-    await message.answer_document(
-        FSInputFile(output_path),
-        caption=_format_fill_summary(record.id, notebook.id, result_json),
-    )
+
+async def _fill_notebook_and_send(
+    *,
+    bot: Bot,
+    chat_id: int,
+    user_id: int,
+    record_id: int,
+    notebook_id: int,
+) -> None:
+    async with async_session_maker() as session:
+        record = await session.scalar(
+            select(InterviewRecord).where(
+                InterviewRecord.id == record_id,
+                InterviewRecord.user_id == user_id,
+            )
+        )
+        notebook = await session.scalar(
+            select(ObserverNotebook).where(
+                ObserverNotebook.id == notebook_id,
+                ObserverNotebook.user_id == user_id,
+            )
+        )
+        if record is None or notebook is None:
+            await bot.send_message(chat_id, "Запись или блокнот не найдены.")
+            return
+
+        try:
+            input_path = Path(notebook.file_path)
+            indicators = extract_notebook_indicators(input_path)
+            report = await analyze_notebook_indicators(transcript=record.transcript, indicators=indicators)
+            output_path = settings.download_dir.parent / "reports" / f"filled_record_{record.id}_notebook_{notebook.id}.xlsx"
+            result_json = fill_observer_notebook(
+                input_path=input_path,
+                output_path=output_path,
+                indicators=indicators,
+                report=report,
+            )
+        except NotebookProcessingError as exc:
+            logger.exception("Notebook processing failed")
+            await bot.send_message(chat_id, f"Не удалось заполнить блокнот: {escape(str(exc), quote=False)}")
+            return
+        except Exception:
+            logger.exception("Unexpected notebook filling error")
+            await bot.send_message(chat_id, "Произошла ошибка при заполнении блокнота. Подробности записаны в лог.")
+            return
+
+        fill_result = NotebookFillResult(
+            exercise_id=record.exercise_id if record.exercise_id == notebook.exercise_id else None,
+            record_id=record.id,
+            notebook_id=notebook.id,
+            chat_id=chat_id,
+            user_id=user_id,
+            output_path=str(output_path),
+            result_json=result_json,
+        )
+        session.add(fill_result)
+        await session.commit()
+
+        await bot.send_document(
+            chat_id,
+            FSInputFile(output_path),
+            caption=_format_fill_summary(record.id, notebook.id, result_json),
+        )
 
 
 def _format_fill_summary(record_id: int, notebook_id: int, result_json: dict[str, object]) -> str:

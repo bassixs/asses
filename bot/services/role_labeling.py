@@ -31,12 +31,17 @@ class RoleLabeledTranscript(BaseModel):
     segments: list[RoleSegment] = Field(default_factory=list)
 
 
-async def label_transcript_roles(transcript: str) -> str:
+async def label_transcript_roles(
+    transcript: str,
+    *,
+    assessed_participant_name: str | None = None,
+    exercise_name: str | None = None,
+) -> str:
     cleaned = _strip_export_header(normalize_transcript_text(transcript))
     if not settings.role_labeling_enabled or not cleaned:
         return cleaned
 
-    if _looks_role_labeled(cleaned):
+    if _looks_role_labeled(cleaned) and not assessed_participant_name:
         return _normalize_role_labeled_text(cleaned)
 
     chunks = _chunk_transcript(cleaned, max_chars=settings.role_labeling_chunk_chars)
@@ -45,16 +50,50 @@ async def label_transcript_roles(transcript: str) -> str:
 
     for index, chunk in enumerate(chunks, start=1):
         logger.info("Role labeling transcript chunk %s/%s chars=%s", index, len(chunks), len(chunk))
-        chunk_result = await _label_chunk(chunk=chunk, previous_tail=previous_tail)
+        chunk_result = await _label_chunk(
+            chunk=chunk,
+            previous_tail=previous_tail,
+            assessed_participant_name=assessed_participant_name,
+            exercise_name=exercise_name,
+        )
         labeled_parts.append(_format_segments(chunk_result.segments))
         previous_tail = _tail_text(chunk_result.segments)
 
     return _merge_labeled_parts(labeled_parts)
 
 
-async def _label_chunk(*, chunk: str, previous_tail: str, depth: int = 0) -> RoleLabeledTranscript:
+def extract_participant_transcript(transcript: str) -> str:
+    """Return only assessed participant lines from an already role-labeled transcript.
+
+    If the transcript is not role-labeled, return the normalized text unchanged so
+    legacy records and failed role-labeling results can still be analyzed.
+    """
+    cleaned = _strip_export_header(normalize_transcript_text(transcript))
+    if not _looks_role_labeled(cleaned):
+        return cleaned
+
+    segments = _parse_role_labeled_lines(cleaned)
+    participant_segments = [segment for segment in segments if segment.role == "участник"]
+    if not participant_segments:
+        return cleaned
+    return _format_segments(participant_segments)
+
+
+async def _label_chunk(
+    *,
+    chunk: str,
+    previous_tail: str,
+    assessed_participant_name: str | None,
+    exercise_name: str | None,
+    depth: int = 0,
+) -> RoleLabeledTranscript:
     try:
-        return await _label_chunk_once(chunk=chunk, previous_tail=previous_tail)
+        return await _label_chunk_once(
+            chunk=chunk,
+            previous_tail=previous_tail,
+            assessed_participant_name=assessed_participant_name,
+            exercise_name=exercise_name,
+        )
     except RoleLabelingError:
         if depth >= 3 or len(chunk) <= 1200:
             raise
@@ -67,16 +106,36 @@ async def _label_chunk(*, chunk: str, previous_tail: str, depth: int = 0) -> Rol
     segments: list[RoleSegment] = []
     tail = previous_tail
     for part in parts:
-        labeled = await _label_chunk(chunk=part, previous_tail=tail, depth=depth + 1)
+        labeled = await _label_chunk(
+            chunk=part,
+            previous_tail=tail,
+            assessed_participant_name=assessed_participant_name,
+            exercise_name=exercise_name,
+            depth=depth + 1,
+        )
         segments.extend(labeled.segments)
         tail = _tail_text(labeled.segments)
     return RoleLabeledTranscript(segments=segments)
 
 
-async def _label_chunk_once(*, chunk: str, previous_tail: str) -> RoleLabeledTranscript:
+async def _label_chunk_once(
+    *,
+    chunk: str,
+    previous_tail: str,
+    assessed_participant_name: str | None,
+    exercise_name: str | None,
+) -> RoleLabeledTranscript:
     payload = await _complete_json(
-        system_prompt=_system_prompt(),
-        user_prompt=_user_prompt(chunk=chunk, previous_tail=previous_tail),
+        system_prompt=_system_prompt(
+            assessed_participant_name=assessed_participant_name,
+            exercise_name=exercise_name,
+        ),
+        user_prompt=_user_prompt(
+            chunk=chunk,
+            previous_tail=previous_tail,
+            assessed_participant_name=assessed_participant_name,
+            exercise_name=exercise_name,
+        ),
     )
     try:
         labeled = RoleLabeledTranscript.model_validate(payload)
@@ -300,13 +359,41 @@ def _tail_text(segments: list[RoleSegment], *, max_chars: int = 1200) -> str:
     return tail[-max_chars:]
 
 
-def _system_prompt() -> str:
-    return """
+def _system_prompt(*, assessed_participant_name: str | None, exercise_name: str | None) -> str:
+    known_context = ""
+    if assessed_participant_name or exercise_name:
+        known_context = "\n".join(
+            part
+            for part in (
+                f"Известный оцениваемый участник: {assessed_participant_name}." if assessed_participant_name else "",
+                f"Название упражнения: {exercise_name}." if exercise_name else "",
+            )
+            if part
+        )
+        known_context = f"\n\nКонтекст из системы:\n{known_context}\n"
+
+    return f"""
 Ты размечаешь расшифровку упражнения ассессмент-центра по ролям.
+{known_context}
 
 Роли всегда только две:
 - "ведущий": ассессор, наблюдатель, интервьюер, ролевой игрок, сотрудник в упражнении, любой человек кроме оцениваемого участника.
 - "участник": оцениваемый кандидат/руководитель, который проходит упражнение и демонстрирует компетенции.
+
+Главное правило:
+Ты размечаешь роли НЕ по тому, кто больше говорит, НЕ по первому лицу и НЕ по имени персонажа, а по статусу в ассессменте.
+"участник" — только оцениваемый человек, чьи компетенции нужно оценить.
+"ведущий" — все остальные голоса: ведущий, наблюдатель, интервьюер, ролевой игрок, подчинённый/сотрудник в ролевой встрече, клиент, ассистент, ассессор.
+
+Как определить оцениваемого, если имя прямо не передано:
+1. Проверь весь фрагмент и предыдущий контекст, кто демонстрирует управленческое поведение: ставит задачу, принимает решения, ведёт трудный разговор, даёт обратную связь, договаривается о сроках, управляет сопротивлением.
+2. В ролевых упражнениях оцениваемый часто играет руководителя/менеджера. Ролевой сотрудник может много говорить о своих проблемах, усталости, отпуске и возражениях, но он НЕ становится "участником", если его поведение не оценивается.
+3. Если один говорящий жалуется, сопротивляется, отвечает как сотрудник или клиент, а второй пытается провести управленческий разговор, то оцениваемый обычно второй.
+4. Если в системном контексте указано имя оцениваемого, все реплики этого человека помечай "участник", даже если он задаёт вопросы или ведёт разговор. Реплики других людей помечай "ведущий".
+5. Если в тексте встречается обращение к имени, не путай адресата и говорящего. Фраза "Марина, скажите..." означает, что говорящий не Марина.
+6. Если имена похожи или распознавание ошиблось, опирайся на устойчивый паттерн диалога и цель упражнения, а не на единичную фразу.
+7. Если уверенность низкая, выбери вариант, который лучше сохраняет для "участника" оцениваемое управленческое поведение, а не эмоциональные ответы ролевого сотрудника.
+8. Если вход уже содержит метки "ведущий"/"участник", не доверяй им автоматически: проверь их заново по правилам выше и исправь, если они противоречат статусу оцениваемого.
 
 Задача:
 1. Раздели входной текст на последовательные реплики диалога.
@@ -315,15 +402,33 @@ def _system_prompt() -> str:
 4. Не добавляй краткое содержание, комментарии, выводы, заголовки и markdown.
 5. Не переписывай смысл и не украшай текст. Можно только аккуратно разделить длинный текст на реплики и убрать явные повторы/мусор распознавания.
 6. Не выдумывай факты и фразы, которых нет во входном тексте.
-7. Если не уверен, ориентируйся на функцию реплики: вопросы, инструкции, управление упражнением и уточнения чаще говорит ведущий; ответы от первого лица о своих действиях, трудностях, решениях и мотивации чаще говорит участник.
-8. В упражнении могут встречаться имена Марина/Маргарита. Не используй имя как единственный критерий. Главный критерий: оцениваемый участник отвечает за свои действия и решения.
+7. Не добавляй тайминги, если их нет во входе.
+8. Не добавляй отдельную роль для ролевого игрока. Ролевой игрок всегда "ведущий".
 """.strip()
 
 
-def _user_prompt(*, chunk: str, previous_tail: str) -> str:
+def _user_prompt(
+    *,
+    chunk: str,
+    previous_tail: str,
+    assessed_participant_name: str | None,
+    exercise_name: str | None,
+) -> str:
     context = f"Предыдущий фрагмент для контекста:\n{previous_tail}\n\n" if previous_tail else ""
+    system_context = ""
+    if assessed_participant_name or exercise_name:
+        system_context = "\n".join(
+            part
+            for part in (
+                f"Оцениваемый участник: {assessed_participant_name}" if assessed_participant_name else "",
+                f"Упражнение: {exercise_name}" if exercise_name else "",
+            )
+            if part
+        )
+        system_context = f"{system_context}\n\n"
     return (
         f"{context}"
+        f"{system_context}"
         "Разметь следующий фрагмент. Верни только JSON по схеме segments.\n\n"
         f"Фрагмент:\n{chunk}"
     )

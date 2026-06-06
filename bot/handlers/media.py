@@ -12,7 +12,8 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from bot.config import settings
 from bot.keyboards import stt_provider_keyboard
-from bot.models import InterviewRecord, MediaProcessingJob
+from bot.models import Exercise, InterviewRecord, MediaProcessingJob, Participant
+from bot.services.role_labeling import RoleLabelingError, label_transcript_roles
 from bot.services.speechkit import normalize_transcript_text
 from bot.services.telegram_files import (
     SUPPORTED_AUDIO_DOCUMENT_EXTENSIONS,
@@ -213,8 +214,31 @@ async def cmd_rebuild_transcript(message: Message, session: AsyncSession) -> Non
         await message.answer("Запись не найдена.")
         return
 
-    await message.answer("Пересобираю файл расшифровки: очищаю повторы и заново размечаю роли...")
-    record.transcript = normalize_transcript_text(record.transcript)
+    participant_name: str | None = None
+    exercise_name: str | None = None
+    if record.exercise_id is not None:
+        exercise = await session.get(Exercise, record.exercise_id)
+        if exercise is not None:
+            exercise_name = exercise.name
+            participant = await session.get(Participant, exercise.participant_id)
+            participant_name = participant.full_name if participant else None
+
+    await message.answer(
+        "Пересобираю файл расшифровки: очищаю повторы и заново размечаю роли"
+        f"{f' по участнику {participant_name}' if participant_name else ''}..."
+    )
+    cleaned_transcript = normalize_transcript_text(record.raw_transcript or record.transcript)
+    try:
+        record.transcript = await label_transcript_roles(
+            cleaned_transcript,
+            assessed_participant_name=participant_name,
+            exercise_name=exercise_name,
+        )
+    except RoleLabelingError as exc:
+        await message.answer(
+            f"Не удалось заново разметить роли, сохраню очищенный текст без новой разметки: {escape(str(exc), quote=False)}"
+        )
+        record.transcript = cleaned_transcript
     await session.commit()
 
     transcript_path = await build_transcript_text_file(transcript=record.transcript, record_id=record.id)

@@ -12,6 +12,7 @@ from pydantic import BaseModel, Field, ValidationError, field_validator
 
 from bot.config import settings
 from bot.services.llm_json import complete_json_openai_compatible
+from bot.services.role_labeling import extract_participant_transcript
 from bot.services.yandex_gpt import complete_json
 
 logger = logging.getLogger(__name__)
@@ -118,7 +119,8 @@ async def analyze_notebook_indicators(
         for item in indicators
     ]
     system_prompt = _build_notebook_system_prompt()
-    user_prompt = _build_notebook_user_prompt(transcript=transcript, indicators=payload)
+    participant_transcript = extract_participant_transcript(transcript)
+    user_prompt = _build_notebook_user_prompt(transcript=participant_transcript, indicators=payload)
     if settings.analysis_llm_provider.lower().strip() == "yandex":
         raw = await complete_json(
             system_prompt=system_prompt,
@@ -198,7 +200,7 @@ def _build_notebook_system_prompt() -> str:
 Правила:
 1. Оценивай только реплики оцениваемого участника ассессмент-центра.
 2. Не используй реплики наблюдателя, ведущего или ролевого игрока как evidence проявления.
-3. Сначала отдели роли: наблюдатель/ведущий, участник АЦ, ролевой игрок.
+3. Во входном транскрипте уже должен быть оставлен оцениваемый участник. Если всё же встретятся роли, используй только строки "Участник:".
 4. Для каждого индикатора верни один статус:
    "+" — есть хотя бы одна релевантная цитата участника;
    "-" — индикатор мог наблюдаться в упражнении, но проявления участника нет;
