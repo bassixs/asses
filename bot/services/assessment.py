@@ -6,6 +6,7 @@ from typing import Any
 from pydantic import BaseModel, Field, ValidationError, field_validator
 
 from bot.config import settings
+from bot.services.llm_json import LLMJSONError, complete_json_openai_compatible
 from bot.services.yandex_gpt import complete_json
 
 logger = logging.getLogger(__name__)
@@ -74,19 +75,31 @@ def build_system_prompt() -> str:
 
 
 async def analyze_transcript(transcript: str) -> dict[str, Any]:
-    """Analyze transcript with YandexGPT and return a validated dict."""
+    """Analyze transcript and return a validated dict."""
     system_prompt = build_system_prompt()
-    user_prompt = f"Транскрипт интервью:\n\n{transcript}"
-    raw_result = await complete_json(
-        system_prompt=system_prompt,
-        user_prompt=user_prompt,
-        json_schema=AssessmentReport.model_json_schema(),
-    )
+    user_prompt = f"?????????? ????????:\n\n{transcript}"
+    if settings.analysis_llm_provider.lower().strip() == "yandex":
+        raw_result = await complete_json(
+            system_prompt=system_prompt,
+            user_prompt=user_prompt,
+            json_schema=AssessmentReport.model_json_schema(),
+        )
+    else:
+        raw_result = await complete_json_openai_compatible(
+            provider=settings.analysis_llm_provider,
+            model=settings.analysis_llm_model,
+            system_prompt=system_prompt,
+            user_prompt=user_prompt,
+            temperature=settings.analysis_llm_temperature,
+            max_tokens=settings.analysis_llm_max_tokens,
+            timeout_seconds=settings.analysis_llm_timeout_seconds,
+            json_mode=settings.analysis_llm_json_mode,
+        )
 
     try:
         report = AssessmentReport.model_validate(raw_result)
     except ValidationError as exc:
         logger.error("Invalid assessment JSON schema: %s", exc)
-        raise
+        raise LLMJSONError("LLM returned invalid assessment JSON") from exc
 
     return report.model_dump()

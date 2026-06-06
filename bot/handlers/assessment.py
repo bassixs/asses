@@ -14,6 +14,7 @@ from sqlalchemy.orm import selectinload
 from bot.keyboards import assessment_actions_keyboard
 from bot.models import AssessmentResult, InterviewRecord
 from bot.services.assessment import analyze_transcript
+from bot.services.llm_json import LLMJSONError
 from bot.services.yandex_gpt import YandexGPTError
 
 logger = logging.getLogger(__name__)
@@ -103,8 +104,8 @@ async def _run_assessment(
 
     try:
         result = await analyze_transcript(record.transcript)
-    except YandexGPTError as exc:
-        logger.exception("YandexGPT failed")
+    except (YandexGPTError, LLMJSONError) as exc:
+        logger.exception("LLM assessment failed")
         return None, f"Не удалось выполнить оценку: {escape(str(exc), quote=False)}"
     except Exception:
         logger.exception("Unexpected assessment error")

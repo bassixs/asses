@@ -10,6 +10,8 @@ from openpyxl import load_workbook
 from openpyxl.styles import Alignment
 from pydantic import BaseModel, Field, ValidationError, field_validator
 
+from bot.config import settings
+from bot.services.llm_json import complete_json_openai_compatible
 from bot.services.yandex_gpt import complete_json
 
 logger = logging.getLogger(__name__)
@@ -115,13 +117,27 @@ async def analyze_notebook_indicators(
         }
         for item in indicators
     ]
-    raw = await complete_json(
-        system_prompt=_build_notebook_system_prompt(),
-        user_prompt=_build_notebook_user_prompt(transcript=transcript, indicators=payload),
-        json_schema=NotebookAnalysisReport.model_json_schema(),
-        temperature=0.05,
-        max_tokens=8000,
-    )
+    system_prompt = _build_notebook_system_prompt()
+    user_prompt = _build_notebook_user_prompt(transcript=transcript, indicators=payload)
+    if settings.analysis_llm_provider.lower().strip() == "yandex":
+        raw = await complete_json(
+            system_prompt=system_prompt,
+            user_prompt=user_prompt,
+            json_schema=NotebookAnalysisReport.model_json_schema(),
+            temperature=0.05,
+            max_tokens=8000,
+        )
+    else:
+        raw = await complete_json_openai_compatible(
+            provider=settings.analysis_llm_provider,
+            model=settings.analysis_llm_model,
+            system_prompt=system_prompt,
+            user_prompt=user_prompt,
+            temperature=settings.analysis_llm_temperature,
+            max_tokens=settings.analysis_llm_max_tokens,
+            timeout_seconds=settings.analysis_llm_timeout_seconds,
+            json_mode=settings.analysis_llm_json_mode,
+        )
 
     try:
         report = NotebookAnalysisReport.model_validate(raw)
