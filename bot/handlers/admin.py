@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import logging
 from pathlib import Path
 from typing import Any
 
@@ -22,8 +23,14 @@ from bot.models import (
     Participant,
     ParticipantReport,
 )
+from bot.services.object_storage import (
+    ObjectStorageError,
+    delete_uploaded_file_from_storage,
+    delete_uploaded_prefix_from_storage,
+)
 
 router = Router()
+logger = logging.getLogger(__name__)
 
 _awaiting_password: set[int] = set()
 _authenticated_admins: set[int] = set()
@@ -247,6 +254,7 @@ async def _delete_one(kind: str, item_id: int, session: AsyncSession) -> str:
 
 async def _delete_all(session: AsyncSession) -> None:
     for record in list(await session.scalars(select(InterviewRecord))):
+        await _delete_storage_file(record.file_path)
         _safe_unlink(record.file_path)
     for notebook in list(await session.scalars(select(ObserverNotebook))):
         _safe_unlink(notebook.file_path)
@@ -265,6 +273,7 @@ async def _delete_all(session: AsyncSession) -> None:
     await session.execute(delete(AssessmentCenter))
     _delete_runtime_files(settings.download_dir)
     _delete_runtime_files(settings.download_dir.parent / "reports")
+    await _delete_storage_prefix()
 
 
 async def _delete_record(session: AsyncSession, record: InterviewRecord) -> None:
@@ -272,6 +281,7 @@ async def _delete_record(session: AsyncSession, record: InterviewRecord) -> None
         _safe_unlink(fill.output_path)
         await session.delete(fill)
     await session.execute(delete(AssessmentResult).where(AssessmentResult.record_id == record.id))
+    await _delete_storage_file(record.file_path)
     _safe_unlink(record.file_path)
     await session.delete(record)
 
@@ -333,3 +343,19 @@ def _resolve_runtime_path(path: str) -> Path:
     if not file_path.is_absolute():
         file_path = Path.cwd() / file_path
     return file_path.resolve()
+
+
+async def _delete_storage_file(file_path: str | None) -> None:
+    try:
+        await delete_uploaded_file_from_storage(file_path)
+    except ObjectStorageError:
+        logger.exception("Failed to delete uploaded file from Object Storage: file_path=%s", file_path)
+
+
+async def _delete_storage_prefix() -> None:
+    try:
+        deleted_count = await delete_uploaded_prefix_from_storage()
+    except ObjectStorageError:
+        logger.exception("Failed to delete Object Storage prefix")
+        return
+    logger.info("Deleted Object Storage objects from upload prefix: count=%s", deleted_count)
