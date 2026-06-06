@@ -10,9 +10,11 @@ from pathlib import Path
 from aiogram import Bot
 from sqlalchemy import select
 
+from bot.config import settings
 from bot.database import async_session_maker
 from bot.keyboards import transcript_actions_keyboard
 from bot.models import InterviewRecord, MediaProcessingJob
+from bot.services.audio_preprocessing import AudioPreprocessingError, prepare_audio_for_upload
 from bot.services.aitunnel_whisper import AITunnelWhisperError, transcribe_file_aitunnel_whisper
 from bot.services.neuroapi_whisper import NeuroAPIWhisperError, transcribe_file_neuroapi_whisper
 from bot.services.speechkit import SpeechKitError, transcribe_file
@@ -134,6 +136,10 @@ async def _process_job(bot: Bot, job_id: int) -> None:
         await _mark_failed(job_id, str(exc))
         logger.exception("NeuroAPI Whisper failed for media job id=%s", job_id)
         await bot.send_message(job.chat_id, f"Задача #{job.id}: NeuroAPI Whisper не смог расшифровать запись: {escape(str(exc), quote=False)}")
+    except AudioPreprocessingError as exc:
+        await _mark_failed(job_id, str(exc))
+        logger.exception("Audio preprocessing failed for media job id=%s", job_id)
+        await bot.send_message(job.chat_id, f"Задача #{job.id}: не удалось подготовить аудио для Whisper: {escape(str(exc), quote=False)}")
     except Exception as exc:
         await _mark_failed(job_id, str(exc))
         logger.exception("Media job failed id=%s", job_id)
@@ -190,9 +196,19 @@ async def _load_claimed_job(job_id: int) -> ClaimedMediaJob | None:
 
 async def _transcribe_with_provider(local_path: Path, provider: str) -> str:
     if provider == "aitunnel":
-        return await transcribe_file_aitunnel_whisper(local_path)
+        upload_path = await prepare_audio_for_upload(
+            local_path,
+            max_bytes=settings.aitunnel_max_upload_bytes,
+            provider_name="aitunnel",
+        )
+        return await transcribe_file_aitunnel_whisper(upload_path)
     if provider == "neuroapi":
-        return await transcribe_file_neuroapi_whisper(local_path)
+        upload_path = await prepare_audio_for_upload(
+            local_path,
+            max_bytes=settings.neuroapi_max_upload_bytes,
+            provider_name="neuroapi",
+        )
+        return await transcribe_file_neuroapi_whisper(upload_path)
     return await transcribe_file(local_path)
 
 

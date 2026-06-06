@@ -115,6 +115,7 @@ class Settings(BaseSettings):
     aitunnel_response_format: str = Field(default="json", validation_alias="AITUNNEL_RESPONSE_FORMAT")
     aitunnel_timeout_seconds: int = Field(default=1800, validation_alias="AITUNNEL_TIMEOUT_SECONDS")
     aitunnel_force_ipv4: bool = Field(default=True, validation_alias="AITUNNEL_FORCE_IPV4")
+    aitunnel_max_upload_bytes: int = Field(default=25_000_000, validation_alias="AITUNNEL_MAX_UPLOAD_BYTES")
     neuroapi_api_key: str | None = Field(default=None, validation_alias="NEUROAPI_API_KEY")
     neuroapi_base_url: str = Field(default="https://neuroapi.host/v1", validation_alias="NEUROAPI_BASE_URL")
     neuroapi_whisper_model: str = Field(default="whisper-1", validation_alias="NEUROAPI_WHISPER_MODEL")
@@ -122,6 +123,12 @@ class Settings(BaseSettings):
     neuroapi_response_format: str = Field(default="json", validation_alias="NEUROAPI_RESPONSE_FORMAT")
     neuroapi_timeout_seconds: int = Field(default=1800, validation_alias="NEUROAPI_TIMEOUT_SECONDS")
     neuroapi_force_ipv4: bool = Field(default=True, validation_alias="NEUROAPI_FORCE_IPV4")
+    neuroapi_max_upload_bytes: int = Field(default=25_000_000, validation_alias="NEUROAPI_MAX_UPLOAD_BYTES")
+    ffmpeg_binary: str = Field(default="ffmpeg", validation_alias="FFMPEG_BINARY")
+    whisper_compression_bitrates_kbps: str = Field(
+        default="32,24,16",
+        validation_alias="WHISPER_COMPRESSION_BITRATES_KBPS",
+    )
     admin_bot_password: str = Field(default="1172", validation_alias="ADMIN_BOT_PASSWORD")
     competencies: list[str] = Field(default_factory=lambda: DEFAULT_COMPETENCIES.copy())
 
