@@ -253,19 +253,20 @@ async def step_notebook(message: Message, bot: Bot, session: AsyncSession, state
     await session.commit()
 
     ok = await run_exercise_processing(message, session, exercise)
+    await state.set_state(None)
     if not ok:
+        await message.answer(
+            "Не удалось обработать упражнение. Можно попробовать отправить блокнот ещё раз "
+            "или продолжить:",
+            reply_markup=_next_step_keyboard(),
+        )
         return
-
-    participant_id = int(data["participant_id"])
-    if data.get("mode") == "single":
-        await state.set_state(None)
-        participant = await session.get(Participant, participant_id)
-        if participant is not None:
-            await prepare_participant_report(message, session, participant)
-            await message.answer("Готово. Можно сформировать ИПР:", reply_markup=_ipr_keyboard(participant_id))
-    else:
-        await state.set_state(None)
-        await message.answer("Что дальше?", reply_markup=_next_step_keyboard())
+    await message.answer(
+        "✅ Упражнение обработано.\n\n"
+        "Дальше можно добавить ещё упражнение этому участнику или сразу сформировать отчёт "
+        "(а затем ИПР).",
+        reply_markup=_next_step_keyboard(),
+    )
 
 
 # ---- next-step callbacks -------------------------------------------------------------------
