@@ -523,19 +523,33 @@ _TS_WORD_RE = re.compile(r"\w+", re.UNICODE)
 def attach_evidence_timestamps(report: NotebookAnalysisReport, segments: list[dict[str, Any]]) -> None:
     """Fill evidence.timestamp ([мм:сс]) by matching each quote to the STT segments."""
     if not segments:
+        logger.info("Evidence timestamps skipped: no transcript segments stored")
         return
     word_times = _build_word_times(segments)
     if not word_times:
+        logger.info("Evidence timestamps skipped: segments produced no words (count=%s)", len(segments))
         return
+    total = 0
+    matched_count = 0
     for result in report.results:
         if result.status != "+":
             continue
         for evidence in result.evidence:
+            total += 1
             if evidence.timestamp:
+                matched_count += 1
                 continue
             matched = _match_timestamp(evidence.quote, word_times)
             if matched:
                 evidence.timestamp = matched
+                matched_count += 1
+    logger.info(
+        "Evidence timestamps: segments=%s words=%s evidence=%s matched=%s",
+        len(segments),
+        len(word_times),
+        total,
+        matched_count,
+    )
 
 
 def _build_word_times(segments: list[dict[str, Any]]) -> list[tuple[str, float]]:
