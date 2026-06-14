@@ -283,6 +283,11 @@ async def cmd_process_exercise(message: Message, session: AsyncSession) -> None:
     if exercise is None:
         await message.answer("Упражнение не найдено.")
         return
+    await run_exercise_processing(message, session, exercise)
+
+
+async def run_exercise_processing(message: Message, session: AsyncSession, exercise: Exercise) -> bool:
+    """Analyse the latest record+notebook of an exercise, fill the notebook, send it. Returns success."""
     record = await session.scalar(
         select(InterviewRecord).where(InterviewRecord.exercise_id == exercise.id).order_by(InterviewRecord.id.desc())
     )
@@ -291,7 +296,7 @@ async def cmd_process_exercise(message: Message, session: AsyncSession) -> None:
     )
     if record is None or notebook is None:
         await message.answer("К упражнению нужно привязать запись и блокнот.")
-        return
+        return False
 
     await message.answer("Обрабатываю упражнение: заполняю блокнот наблюдателя...")
     input_path = Path(notebook.file_path)
@@ -301,7 +306,7 @@ async def cmd_process_exercise(message: Message, session: AsyncSession) -> None:
     except (NotebookProcessingError, LLMJSONError) as exc:
         logging.getLogger(__name__).exception("process_exercise analysis failed for exercise_id=%s", exercise.id)
         await message.answer(f"Не удалось обработать упражнение #{exercise.id}: {escape(str(exc), quote=False)}")
-        return
+        return False
     attach_evidence_timestamps(report, _load_segments(record.transcript_segments))
     output_path = settings.download_dir.parent / "reports" / f"exercise_{exercise.id}_filled.xlsx"
     result_json = fill_observer_notebook(
@@ -321,7 +326,8 @@ async def cmd_process_exercise(message: Message, session: AsyncSession) -> None:
     )
     session.add(fill_result)
     await session.commit()
-    await message.answer_document(FSInputFile(output_path), caption=f"Готово: упражнение #{exercise.id} обработано.")
+    await message.answer_document(FSInputFile(output_path), caption=f"Готово: упражнение «{exercise.name}» обработано.")
+    return True
 
 
 @router.message(Command("generate_report"))
@@ -337,6 +343,11 @@ async def cmd_generate_report(message: Message, session: AsyncSession) -> None:
     if participant is None:
         await message.answer("Участник не найден.")
         return
+    await prepare_participant_report(message, session, participant)
+
+
+async def prepare_participant_report(message: Message, session: AsyncSession, participant: Participant) -> bool:
+    """Build, enrich and store a participant report, then offer format buttons. Returns success."""
     fills = list(
         await session.scalars(
             select(NotebookFillResult)
@@ -346,8 +357,8 @@ async def cmd_generate_report(message: Message, session: AsyncSession) -> None:
         )
     )
     if not fills:
-        await message.answer("Нет обработанных упражнений для отчета.")
-        return
+        await message.answer("Нет обработанных упражнений для отчёта.")
+        return False
     _, result_json = build_participant_report_text(
         participant_name=participant.full_name,
         exercise_results=[item.result_json for item in fills],
@@ -380,9 +391,10 @@ async def cmd_generate_report(message: Message, session: AsyncSession) -> None:
     session.add(report)
     await session.commit()
     await message.answer(
-        f"Отчёт участника #{participant.id} готов. В каком формате выдать?",
+        f"Отчёт участника «{participant.full_name}» готов. В каком формате выдать?",
         reply_markup=report_format_keyboard(participant.id),
     )
+    return True
 
 
 def _build_competency_matrix(fills: list[Any], exercise_by_id: dict[int, str]) -> dict[str, dict[str, Any]]:
@@ -486,14 +498,19 @@ async def cmd_generate_ipr(message: Message, session: AsyncSession) -> None:
     if participant is None:
         await message.answer("Участник не найден.")
         return
+    await generate_ipr_document(message, session, participant)
+
+
+async def generate_ipr_document(message: Message, session: AsyncSession, participant: Participant) -> bool:
+    """Build the IPR docx from the latest report and send it as DOCX + PDF. Returns success."""
     report = await session.scalar(
         select(ParticipantReport)
         .where(ParticipantReport.participant_id == participant.id)
         .order_by(ParticipantReport.id.desc())
     )
     if report is None:
-        await message.answer("Сначала сформируйте отчет: /generate_report <participant_id>")
-        return
+        await message.answer("Сначала сформируйте отчёт.")
+        return False
     _, result_json = build_development_plan_text(
         participant_name=participant.full_name,
         report_json=report.result_json,
@@ -515,7 +532,8 @@ async def cmd_generate_ipr(message: Message, session: AsyncSession) -> None:
     )
     session.add(plan)
     await session.commit()
-    await _send_docx_with_pdf(message, output_path, caption=f"ИПР участника #{participant.id} сформирован.")
+    await _send_docx_with_pdf(message, output_path, caption=f"ИПР участника «{participant.full_name}» сформирован.")
+    return True
 
 
 def _load_segments(raw: str | None) -> list[dict[str, Any]]:

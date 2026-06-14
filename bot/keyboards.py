@@ -23,6 +23,17 @@ def transcript_actions_keyboard(record_id: int) -> InlineKeyboardMarkup:
     )
 
 
+def welcome_keyboard() -> InlineKeyboardMarkup:
+    return InlineKeyboardMarkup(
+        inline_keyboard=[
+            [InlineKeyboardButton(text="📝 Расшифровать запись", callback_data="guided:transcribe")],
+            [InlineKeyboardButton(text="📊 Оценить одно упражнение", callback_data="guided:assess_single")],
+            [InlineKeyboardButton(text="🏆 Оценить все упражнения (центр)", callback_data="guided:assess_full")],
+            [InlineKeyboardButton(text="ℹ️ Помощь", callback_data="guided:help")],
+        ]
+    )
+
+
 def report_format_keyboard(participant_id: int) -> InlineKeyboardMarkup:
     return InlineKeyboardMarkup(
         inline_keyboard=[

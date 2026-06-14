@@ -14,7 +14,7 @@ from sqlalchemy import select
 from bot.config import settings
 from bot.database import async_session_maker
 from bot.keyboards import transcript_actions_keyboard
-from bot.models import InterviewRecord, MediaProcessingJob
+from bot.models import Exercise, InterviewRecord, MediaProcessingJob, Participant
 from bot.services.audio_chunking import merge_chunk_transcripts
 from bot.services.audio_preprocessing import (
     AudioPreprocessingError,
@@ -44,6 +44,7 @@ class ClaimedMediaJob:
     file_type: str
     file_name: str | None
     stt_provider: str
+    exercise_id: int | None = None
 
 
 def start_media_job_worker(bot: Bot) -> asyncio.Task[None]:
@@ -89,7 +90,8 @@ async def _claim_next_job() -> ClaimedMediaJob | None:
             file_unique_id=job.file_unique_id,
             file_type=job.file_type,
             file_name=job.file_name,
-            stt_provider=job.stt_provider or "yandex",
+            stt_provider=job.stt_provider or "aitunnel",
+            exercise_id=job.exercise_id,
         )
 
 
@@ -122,19 +124,29 @@ async def _process_job(bot: Bot, job_id: int) -> None:
         provider_name = _provider_name(job.stt_provider)
         await bot.send_message(job.chat_id, f"Задача #{job.id}: отправляю аудио на расшифровку через {provider_name}...")
         raw_transcript, segments = await _transcribe_with_provider(bot, job, local_path, job.stt_provider)
-        transcript = await _label_roles_or_keep_raw(bot, job, raw_transcript)
+
+        participant_name, exercise_name = await _exercise_context(job.exercise_id)
+        transcript = await _label_roles_or_keep_raw(bot, job, raw_transcript, participant_name, exercise_name)
 
         record_id = await _create_record(job, local_path, raw_transcript, transcript, segments)
         transcript_path = await build_transcript_text_file(transcript=transcript, record_id=record_id)
         await _mark_completed(job.id, record_id, transcript_path)
 
-        await bot.send_message(
-            job.chat_id,
-            f"Задача #{job.id}: расшифровано через {provider_name}.\n"
-            f"ID записи: {record_id}\n"
-            f"Напишите /assess {record_id} для оценки по компетенциям.",
-            reply_markup=transcript_actions_keyboard(record_id),
-        )
+        if job.exercise_id is not None:
+            await bot.send_message(
+                job.chat_id,
+                f"✅ Расшифровка готова (запись #{record_id}) и привязана к упражнению.\n"
+                "Теперь отправьте блокнот наблюдателя по этому упражнению (.xlsx) 📊",
+                reply_markup=transcript_actions_keyboard(record_id),
+            )
+        else:
+            await bot.send_message(
+                job.chat_id,
+                f"Задача #{job.id}: расшифровано через {provider_name}.\n"
+                f"ID записи: {record_id}\n"
+                f"Напишите /assess {record_id} для оценки по компетенциям.",
+                reply_markup=transcript_actions_keyboard(record_id),
+            )
     except SpeechKitError as exc:
         await _mark_failed(job_id, str(exc))
         logger.exception("SpeechKit failed for media job id=%s", job_id)
@@ -157,6 +169,17 @@ async def _process_job(bot: Bot, job_id: int) -> None:
         await bot.send_message(job.chat_id, f"Задача #{job.id}: произошла ошибка при обработке файла.")
 
 
+async def _exercise_context(exercise_id: int | None) -> tuple[str | None, str | None]:
+    if exercise_id is None:
+        return None, None
+    async with async_session_maker() as session:
+        exercise = await session.get(Exercise, exercise_id)
+        if exercise is None:
+            return None, None
+        participant = await session.get(Participant, exercise.participant_id)
+        return (participant.full_name if participant else None), exercise.name
+
+
 async def _create_record(
     job: ClaimedMediaJob,
     local_path: Path,
@@ -168,6 +191,7 @@ async def _create_record(
         record = InterviewRecord(
             chat_id=job.chat_id,
             user_id=job.user_id,
+            exercise_id=job.exercise_id,
             file_id=job.file_id,
             file_unique_id=job.file_unique_id,
             file_type=job.file_type,
@@ -209,7 +233,8 @@ async def _load_claimed_job(job_id: int) -> ClaimedMediaJob | None:
             file_unique_id=job.file_unique_id,
             file_type=job.file_type,
             file_name=job.file_name,
-            stt_provider=job.stt_provider or "yandex",
+            stt_provider=job.stt_provider or "aitunnel",
+            exercise_id=job.exercise_id,
         )
 
 
@@ -267,13 +292,23 @@ def _offset_segments(segments: list[dict[str, object]], offset: float) -> list[d
     return [{"start": float(seg["start"]) + offset, "text": seg["text"]} for seg in segments]
 
 
-async def _label_roles_or_keep_raw(bot: Bot, job: ClaimedMediaJob, transcript: str) -> str:
+async def _label_roles_or_keep_raw(
+    bot: Bot,
+    job: ClaimedMediaJob,
+    transcript: str,
+    assessed_participant_name: str | None = None,
+    exercise_name: str | None = None,
+) -> str:
     if not settings.role_labeling_enabled:
         return transcript
 
     try:
         await bot.send_message(job.chat_id, f"Задача #{job.id}: размечаю роли ведущий/участник...")
-        return await label_transcript_roles(transcript)
+        return await label_transcript_roles(
+            transcript,
+            assessed_participant_name=assessed_participant_name,
+            exercise_name=exercise_name,
+        )
     except RoleLabelingError as exc:
         logger.exception("Role labeling failed for media job id=%s", job.id)
         await bot.send_message(

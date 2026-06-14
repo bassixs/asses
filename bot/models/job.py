@@ -20,6 +20,11 @@ class MediaProcessingJob(Base):
     file_name: Mapped[str | None] = mapped_column(String(512), nullable=True)
     file_size: Mapped[int | None] = mapped_column(Integer, nullable=True)
     stt_provider: Mapped[str | None] = mapped_column(String(32), nullable=True)
+    exercise_id: Mapped[int | None] = mapped_column(
+        ForeignKey("exercises.id", ondelete="SET NULL"),
+        nullable=True,
+        index=True,
+    )
     status: Mapped[str] = mapped_column(String(32), default="queued", index=True)
     record_id: Mapped[int | None] = mapped_column(
         ForeignKey("interview_records.id", ondelete="SET NULL"),

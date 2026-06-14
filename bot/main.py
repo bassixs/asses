@@ -9,11 +9,12 @@ from typing import Any
 from aiogram import BaseMiddleware, Bot, Dispatcher
 from aiogram.client.session.aiohttp import AiohttpSession
 from aiogram.client.telegram import TelegramAPIServer
+from aiogram.fsm.storage.memory import MemoryStorage
 from aiogram.types import TelegramObject
 
 from bot.config import settings
 from bot.database import async_session_maker, init_db
-from bot.handlers import admin, assessment, common, media, notebook, workflow
+from bot.handlers import admin, assessment, common, guided, media, notebook, workflow
 from bot.services.media_jobs import start_media_job_worker
 
 
@@ -50,10 +51,11 @@ async def main() -> None:
         session = AiohttpSession(api=api_server)
 
     bot = Bot(token=settings.bot_token, session=session)
-    dispatcher = Dispatcher()
+    dispatcher = Dispatcher(storage=MemoryStorage())
     dispatcher.update.middleware(DbSessionMiddleware())
     dispatcher.include_router(admin.router)
     dispatcher.include_router(common.router)
+    dispatcher.include_router(guided.router)
     dispatcher.include_router(workflow.router)
     dispatcher.include_router(assessment.router)
     dispatcher.include_router(notebook.router)
