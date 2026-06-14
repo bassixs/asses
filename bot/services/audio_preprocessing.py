@@ -56,19 +56,24 @@ async def prepare_audio_for_upload(file_path: Path, max_bytes: int, provider_nam
     )
 
 
-async def prepare_audio_chunks_for_upload(file_path: Path, max_bytes: int, provider_name: str) -> list[Path]:
-    """Return upload-ready audio parts under max_bytes.
+async def prepare_audio_chunks_for_upload(
+    file_path: Path,
+    max_bytes: int,
+    provider_name: str,
+) -> list[tuple[Path, float]]:
+    """Return upload-ready audio parts as (path, start_offset_seconds).
 
-    Returns a single element when the file fits as-is or after whole-file compression,
-    and multiple overlapping chunks when even the most aggressive compression is too large.
-    Used by AI Tunnel, which enforces a hard 25 MB per-request limit.
+    The offset is the part's start time in the original recording (0.0 for a single
+    file or a whole-file compression), used to turn chunk-relative STT timestamps into
+    absolute ones. Returns a single element when the file fits as-is or after whole-file
+    compression, and multiple overlapping chunks otherwise. Used by AI Tunnel (25 MB limit).
     """
     if not file_path.exists():
         raise AudioPreprocessingError(f"File not found: {file_path}")
 
     original_size = file_path.stat().st_size
     if original_size <= max_bytes:
-        return [file_path]
+        return [(file_path, 0.0)]
 
     bitrates = _parse_bitrates(settings.whisper_compression_bitrates_kbps)
     if not bitrates:
@@ -95,7 +100,7 @@ async def prepare_audio_chunks_for_upload(file_path: Path, max_bytes: int, provi
             output_path,
         )
         if 0 < compressed_size <= max_bytes:
-            return [output_path]
+            return [(output_path, 0.0)]
         smallest_size = compressed_size
 
     if not settings.whisper_chunk_enabled:
@@ -108,7 +113,7 @@ async def prepare_audio_chunks_for_upload(file_path: Path, max_bytes: int, provi
         chunks: list[AudioChunk] = await split_audio_into_chunks(file_path, max_bytes, provider_name)
     except Exception as exc:  # noqa: BLE001 - re-wrap into the preprocessing error type
         raise AudioPreprocessingError(f"Could not split audio into chunks for {provider_name}: {exc}") from exc
-    return [chunk.path for chunk in chunks]
+    return [(chunk.path, chunk.start_seconds) for chunk in chunks]
 
 
 def _parse_bitrates(raw_value: str) -> list[int]:

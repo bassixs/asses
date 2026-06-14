@@ -2,9 +2,11 @@ from __future__ import annotations
 
 import asyncio
 from html import escape
+import json
 import logging
 import re
 from pathlib import Path
+from typing import Any
 
 from aiogram import Bot, F, Router
 from aiogram.filters import Command
@@ -18,6 +20,7 @@ from bot.models import InterviewRecord, NotebookFillResult, ObserverNotebook
 from bot.services.observer_notebook import (
     NotebookProcessingError,
     analyze_notebook_indicators,
+    attach_evidence_timestamps,
     extract_notebook_indicators,
     fill_observer_notebook,
 )
@@ -26,6 +29,16 @@ logger = logging.getLogger(__name__)
 router = Router()
 
 _SAFE_FILE_NAME_RE = re.compile(r"[^A-Za-z0-9_.-]+")
+
+
+def _load_segments(raw: str | None) -> list[dict[str, Any]]:
+    if not raw:
+        return []
+    try:
+        data = json.loads(raw)
+    except (TypeError, ValueError):
+        return []
+    return data if isinstance(data, list) else []
 
 
 def _is_excel_document(message: Message) -> bool:
@@ -169,6 +182,7 @@ async def _fill_notebook_and_send(
             input_path = Path(notebook.file_path)
             indicators = extract_notebook_indicators(input_path)
             report = await analyze_notebook_indicators(transcript=record.transcript, indicators=indicators)
+            attach_evidence_timestamps(report, _load_segments(record.transcript_segments))
             output_path = settings.download_dir.parent / "reports" / f"filled_record_{record.id}_notebook_{notebook.id}.xlsx"
             result_json = fill_observer_notebook(
                 input_path=input_path,

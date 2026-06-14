@@ -27,6 +27,7 @@ class InterviewRecord(Base):
     stt_provider: Mapped[str | None] = mapped_column(String(32), nullable=True)
     raw_transcript: Mapped[str | None] = mapped_column(Text, nullable=True)
     transcript: Mapped[str] = mapped_column(Text)
+    transcript_segments: Mapped[str | None] = mapped_column(Text, nullable=True)
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True),
         default=lambda: datetime.now(timezone.utc),

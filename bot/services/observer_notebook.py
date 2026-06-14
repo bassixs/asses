@@ -6,6 +6,7 @@ from dataclasses import dataclass
 import json
 import logging
 from pathlib import Path
+import re
 from typing import Any, Literal
 
 from openpyxl import load_workbook
@@ -514,6 +515,68 @@ def _level_from_percent(percent: float) -> float:
     if percent >= 5:
         return 0.5
     return 0
+
+
+_TS_WORD_RE = re.compile(r"\w+", re.UNICODE)
+
+
+def attach_evidence_timestamps(report: NotebookAnalysisReport, segments: list[dict[str, Any]]) -> None:
+    """Fill evidence.timestamp ([мм:сс]) by matching each quote to the STT segments."""
+    if not segments:
+        return
+    word_times = _build_word_times(segments)
+    if not word_times:
+        return
+    for result in report.results:
+        if result.status != "+":
+            continue
+        for evidence in result.evidence:
+            if evidence.timestamp:
+                continue
+            matched = _match_timestamp(evidence.quote, word_times)
+            if matched:
+                evidence.timestamp = matched
+
+
+def _build_word_times(segments: list[dict[str, Any]]) -> list[tuple[str, float]]:
+    out: list[tuple[str, float]] = []
+    for seg in segments:
+        text = seg.get("text")
+        if not isinstance(text, str):
+            continue
+        try:
+            start = float(seg.get("start"))
+        except (TypeError, ValueError):
+            continue
+        for word in _TS_WORD_RE.findall(text.lower()):
+            out.append((word, start))
+    return out
+
+
+def _match_timestamp(quote: str, word_times: list[tuple[str, float]]) -> str | None:
+    needle = [w.lower() for w in _TS_WORD_RE.findall(quote)][:8]
+    if len(needle) < 2:
+        return None
+    stream = [word for word, _ in word_times]
+    best_len = 0
+    best_pos = -1
+    for i in range(len(stream)):
+        run = 0
+        while run < len(needle) and i + run < len(stream) and stream[i + run] == needle[run]:
+            run += 1
+        if run > best_len:
+            best_len = run
+            best_pos = i
+            if best_len == len(needle):
+                break
+    if best_len >= 2 and best_pos >= 0:
+        return _format_mmss(word_times[best_pos][1])
+    return None
+
+
+def _format_mmss(seconds: float) -> str:
+    total = max(0, int(round(seconds)))
+    return f"{total // 60:02d}:{total % 60:02d}"
 
 
 def _format_comment(result: IndicatorAnalysis) -> str:

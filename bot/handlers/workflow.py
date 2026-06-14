@@ -1,9 +1,11 @@
 from __future__ import annotations
 
 import asyncio
+import json
 import logging
 from html import escape
 from pathlib import Path
+from typing import Any
 
 from aiogram import Bot
 from aiogram import Router
@@ -30,6 +32,7 @@ from bot.services.pdf_export import convert_to_pdf
 from bot.services.observer_notebook import (
     NotebookProcessingError,
     analyze_notebook_indicators,
+    attach_evidence_timestamps,
     extract_notebook_indicators,
     fill_observer_notebook,
 )
@@ -298,6 +301,7 @@ async def cmd_process_exercise(message: Message, session: AsyncSession) -> None:
         logging.getLogger(__name__).exception("process_exercise analysis failed for exercise_id=%s", exercise.id)
         await message.answer(f"Не удалось обработать упражнение #{exercise.id}: {escape(str(exc), quote=False)}")
         return
+    attach_evidence_timestamps(report, _load_segments(record.transcript_segments))
     output_path = settings.download_dir.parent / "reports" / f"exercise_{exercise.id}_filled.xlsx"
     result_json = fill_observer_notebook(
         input_path=input_path,
@@ -421,6 +425,16 @@ async def cmd_generate_ipr(message: Message, session: AsyncSession) -> None:
     session.add(plan)
     await session.commit()
     await _send_docx_with_pdf(message, output_path, caption=f"ИПР участника #{participant.id} сформирован.")
+
+
+def _load_segments(raw: str | None) -> list[dict[str, Any]]:
+    if not raw:
+        return []
+    try:
+        data = json.loads(raw)
+    except (TypeError, ValueError):
+        return []
+    return data if isinstance(data, list) else []
 
 
 async def _send_docx_with_pdf(message: Message, docx_path: Path, *, caption: str) -> None:

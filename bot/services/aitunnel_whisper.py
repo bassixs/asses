@@ -19,6 +19,12 @@ class AITunnelWhisperError(RuntimeError):
 
 
 async def transcribe_file_aitunnel_whisper(file_path: Path) -> str:
+    transcript, _ = await transcribe_aitunnel_with_segments(file_path)
+    return transcript
+
+
+async def transcribe_aitunnel_with_segments(file_path: Path) -> tuple[str, list[dict[str, Any]]]:
+    """Transcribe and also return timed segments [{"start": float, "text": str}]."""
     if not settings.aitunnel_api_key:
         raise AITunnelWhisperError("AITunnel API key is not configured")
     if not file_path.exists():
@@ -36,9 +42,30 @@ async def transcribe_file_aitunnel_whisper(file_path: Path) -> str:
     transcript = _extract_transcript_text(payload)
     if not transcript:
         raise AITunnelWhisperError(f"AI Tunnel Whisper returned an empty transcript: {payload}")
+    segments = _extract_segments(payload)
     transcript = normalize_transcript_text(transcript)
-    logger.info("AI Tunnel Whisper transcript received, length=%s", len(transcript))
-    return transcript
+    logger.info("AI Tunnel Whisper transcript received, length=%s segments=%s", len(transcript), len(segments))
+    return transcript, segments
+
+
+def _extract_segments(payload: dict[str, Any]) -> list[dict[str, Any]]:
+    raw = payload.get("segments")
+    if not isinstance(raw, list):
+        return []
+    segments: list[dict[str, Any]] = []
+    for item in raw:
+        if not isinstance(item, dict):
+            continue
+        text = item.get("text")
+        start = item.get("start")
+        if not isinstance(text, str) or not text.strip():
+            continue
+        try:
+            start_seconds = float(start)
+        except (TypeError, ValueError):
+            continue
+        segments.append({"start": start_seconds, "text": text.strip()})
+    return segments
 
 
 async def _send_transcription_request(session: aiohttp.ClientSession, file_path: Path) -> dict[str, Any]:
@@ -47,8 +74,8 @@ async def _send_transcription_request(session: aiohttp.ClientSession, file_path:
     form.add_field("model", settings.aitunnel_whisper_model)
     if settings.aitunnel_language:
         form.add_field("language", settings.aitunnel_language)
-    if settings.aitunnel_response_format:
-        form.add_field("response_format", settings.aitunnel_response_format)
+    # verbose_json returns per-segment timestamps needed for evidence [мм:сс].
+    form.add_field("response_format", "verbose_json")
 
     with file_path.open("rb") as audio_file:
         form.add_field(
