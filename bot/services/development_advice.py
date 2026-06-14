@@ -5,6 +5,7 @@ import logging
 from typing import Any
 
 from bot.config import settings
+from bot.services.competency_content import get_competency_content
 from bot.services.llm_json import complete_json_openai_compatible
 from bot.services.yandex_gpt import complete_json
 
@@ -46,6 +47,13 @@ async def enrich_competencies_with_advice(
     semaphore = asyncio.Semaphore(max(1, settings.analysis_llm_max_concurrency))
 
     async def enrich_one(competence: str, data: dict[str, Any]) -> None:
+        # Curated library content (literature/courses/practice tasks) for every competence.
+        content = get_competency_content(competence)
+        if content:
+            data["literature"] = content.get("literature", []) or []
+            data["courses"] = content.get("courses", []) or []
+            data["practice_tasks"] = content.get("practice_tasks", []) or []
+
         growth_zones = data.get("growth_zones", []) or []
         if not growth_zones:
             data["recommendations"] = []

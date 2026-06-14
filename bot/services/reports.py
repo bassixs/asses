@@ -161,6 +161,24 @@ def save_participant_report_docx(
         recommendations = data.get("recommendations") or _recommendations(data.get("growth_zones", []))
         _add_list_or_empty(doc, recommendations, "Продолжать закреплять сильные стороны.")
 
+        literature = data.get("literature") or []
+        if literature:
+            _add_heading(doc, "Литература", level=2)
+            for item in literature:
+                _add_bullet(doc, item)
+
+        courses = data.get("courses") or []
+        if courses:
+            _add_heading(doc, "Тренинговые блоки", level=2)
+            for course in courses:
+                _add_bullet(doc, _format_course(course))
+
+        practice_tasks = data.get("practice_tasks") or []
+        if practice_tasks:
+            _add_heading(doc, "Задания для закрепления", level=2)
+            for task in practice_tasks:
+                _add_bullet(doc, task)
+
     path.parent.mkdir(parents=True, exist_ok=True)
     doc.save(path)
 
@@ -335,6 +353,16 @@ def clean_indicator_text(text: str) -> str:
     cleaned = cleaned.strip(" ;,-—/\t\n.")
 
     return cleaned if cleaned else text.strip()
+
+
+def _format_course(course: Any) -> str:
+    if isinstance(course, dict):
+        title = str(course.get("title") or "").strip()
+        url = str(course.get("url") or "").strip()
+        if title and url:
+            return f"{title} — {url}"
+        return title or url
+    return str(course)
 
 
 def _recommendations(growth_zones: list[str]) -> list[str]:
