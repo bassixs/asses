@@ -3,14 +3,14 @@ from __future__ import annotations
 import asyncio
 import json
 import logging
+from datetime import datetime
 from html import escape
 from pathlib import Path
 from typing import Any
 
-from aiogram import Bot
-from aiogram import Router
+from aiogram import Bot, F, Router
 from aiogram.filters import Command
-from aiogram.types import FSInputFile, Message
+from aiogram.types import CallbackQuery, FSInputFile, Message
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -44,6 +44,7 @@ from bot.services.reports import (
 )
 from bot.services.role_labeling import RoleLabelingError, label_transcript_roles
 from bot.services.transcript_export import build_transcript_text_file
+from bot.keyboards import report_format_keyboard
 
 router = Router()
 
@@ -362,24 +363,114 @@ async def cmd_generate_report(message: Message, session: AsyncSession) -> None:
         )
     )
     center = await session.get(AssessmentCenter, participant.center_id)
-    output_path = settings.download_dir.parent / "reports" / f"participant_{participant.id}_report.docx"
-    save_participant_report_docx(
-        path=output_path,
-        participant_name=participant.full_name,
-        center_name=center.name if center else None,
-        exercise_names=[item.name for item in exercises],
-        report_json=result_json,
-    )
+    exercise_by_id = {item.id: item.name for item in exercises}
+    result_json["participant_name"] = participant.full_name
+    result_json["center_name"] = center.name if center else None
+    result_json["exercise_names"] = [item.name for item in exercises]
+    result_json["matrix"] = _build_competency_matrix(fills, exercise_by_id)
+    result_json["generated_date"] = datetime.now().strftime("%d.%m.%Y")
+
     report = ParticipantReport(
         participant_id=participant.id,
         chat_id=message.chat.id,
         user_id=message.from_user.id,
-        output_path=str(output_path),
+        output_path="",
         result_json=result_json,
     )
     session.add(report)
     await session.commit()
-    await _send_docx_with_pdf(message, output_path, caption=f"Отчет участника #{participant.id} сформирован.")
+    await message.answer(
+        f"Отчёт участника #{participant.id} готов. В каком формате выдать?",
+        reply_markup=report_format_keyboard(participant.id),
+    )
+
+
+def _build_competency_matrix(fills: list[Any], exercise_by_id: dict[int, str]) -> dict[str, dict[str, Any]]:
+    matrix: dict[str, dict[str, Any]] = {}
+    for fill in fills:
+        exercise_name = exercise_by_id.get(fill.exercise_id, f"Упражнение {fill.exercise_id}")
+        levels = (fill.result_json or {}).get("levels", {}) or {}
+        for competence, level_data in levels.items():
+            level = level_data.get("level") if isinstance(level_data, dict) else level_data
+            matrix.setdefault(str(competence), {})[exercise_name] = level
+    return matrix
+
+
+class ReportFormatUnavailable(RuntimeError):
+    pass
+
+
+@router.callback_query(F.data.startswith("report_format:"))
+async def callback_report_format(callback: CallbackQuery, session: AsyncSession) -> None:
+    if callback.from_user is None or callback.message is None or not callback.data:
+        return
+    _, raw_participant_id, fmt = callback.data.split(":", maxsplit=2)
+    participant_id = int(raw_participant_id)
+    participant = await _load_participant(session, participant_id, callback.from_user.id)
+    if participant is None:
+        await callback.answer("Участник не найден.", show_alert=True)
+        return
+    report = await session.scalar(
+        select(ParticipantReport)
+        .where(ParticipantReport.participant_id == participant_id)
+        .order_by(ParticipantReport.id.desc())
+    )
+    if report is None:
+        await callback.answer("Сначала сформируйте отчёт: /generate_report", show_alert=True)
+        return
+
+    await callback.answer(f"Готовлю {fmt.upper()}...")
+    base_fmt = "docx" if fmt == "docx" else "pptx"
+    try:
+        base_path = await asyncio.to_thread(_render_report_base, participant_id, base_fmt, report.result_json)
+    except ReportFormatUnavailable as exc:
+        await callback.message.answer(str(exc))
+        return
+    except Exception:
+        logging.getLogger(__name__).exception("Report rendering failed for participant_id=%s fmt=%s", participant_id, fmt)
+        await callback.message.answer("Не удалось сформировать файл отчёта.")
+        return
+
+    document = base_path
+    if fmt == "pdf":
+        document = await convert_to_pdf(base_path)
+        if document is None:
+            await callback.message.answer("Не удалось конвертировать отчёт в PDF (проверьте LibreOffice на сервере).")
+            return
+
+    await callback.message.answer_document(
+        FSInputFile(document),
+        caption=f"Отчёт участника #{participant_id} ({fmt.upper()}).",
+    )
+
+
+def _render_report_base(participant_id: int, base_fmt: str, result_json: dict[str, Any]) -> Path:
+    reports_dir = settings.download_dir.parent / "reports"
+    name = result_json.get("participant_name") or ""
+    center = result_json.get("center_name")
+    exercise_names = result_json.get("exercise_names") or []
+
+    if base_fmt == "docx":
+        out = reports_dir / f"participant_{participant_id}_report.docx"
+        save_participant_report_docx(
+            path=out, participant_name=name, center_name=center,
+            exercise_names=exercise_names, report_json=result_json,
+        )
+        return out
+
+    try:
+        from bot.services.report_pptx import save_participant_report_pptx
+    except ImportError as exc:
+        raise ReportFormatUnavailable(
+            "Для PPTX/PDF нужен пакет python-pptx на сервере (pip install python-pptx).",
+        ) from exc
+
+    out = reports_dir / f"participant_{participant_id}_report.pptx"
+    save_participant_report_pptx(
+        path=out, participant_name=name, center_name=center,
+        exercise_names=exercise_names, report_json=result_json,
+    )
+    return out
 
 
 @router.message(Command("generate_ipr"))

@@ -35,6 +35,18 @@ def stt_provider_keyboard(job_id: int) -> InlineKeyboardMarkup:
     )
 
 
+def report_format_keyboard(participant_id: int) -> InlineKeyboardMarkup:
+    return InlineKeyboardMarkup(
+        inline_keyboard=[
+            [
+                InlineKeyboardButton(text="PPTX", callback_data=f"report_format:{participant_id}:pptx"),
+                InlineKeyboardButton(text="DOCX", callback_data=f"report_format:{participant_id}:docx"),
+                InlineKeyboardButton(text="PDF", callback_data=f"report_format:{participant_id}:pdf"),
+            ],
+        ]
+    )
+
+
 def assessment_actions_keyboard(record_id: int) -> InlineKeyboardMarkup:
     return InlineKeyboardMarkup(
         inline_keyboard=[
