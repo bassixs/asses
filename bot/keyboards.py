@@ -23,18 +23,6 @@ def transcript_actions_keyboard(record_id: int) -> InlineKeyboardMarkup:
     )
 
 
-def stt_provider_keyboard(job_id: int) -> InlineKeyboardMarkup:
-    return InlineKeyboardMarkup(
-        inline_keyboard=[
-            [
-                InlineKeyboardButton(text="AI Tunnel Whisper", callback_data=f"stt_provider:{job_id}:aitunnel"),
-                InlineKeyboardButton(text="Yandex", callback_data=f"stt_provider:{job_id}:yandex"),
-            ],
-            [InlineKeyboardButton(text="NeuroAPI Whisper", callback_data=f"stt_provider:{job_id}:neuroapi")],
-        ]
-    )
-
-
 def report_format_keyboard(participant_id: int) -> InlineKeyboardMarkup:
     return InlineKeyboardMarkup(
         inline_keyboard=[
