@@ -17,18 +17,23 @@ _SYSTEM_PROMPT = """
 Тебе дают компетенцию, её уровень, проявленные индикаторы (сильные стороны) и
 непроявленные индикаторы (зоны роста) участника.
 
-Сделай четыре вещи и верни ТОЛЬКО JSON-объект:
+Сделай и верни ТОЛЬКО JSON-объект:
 1. "report_strengths": перепиши сильные стороны в «отчётном» стиле — короткие обобщённые
    позитивные формулировки от третьего лица (5-9 пунктов). Объединяй близкие по смыслу, убирай дубли.
 2. "report_growth_zones": перепиши зоны роста в мягком «отчётном» стиле от третьего лица
    («может упускать из внимания…», «может не всегда…») — 3-7 пунктов.
 3. "recommendations": 3-5 кратких персональных рекомендаций для отчёта по зонам роста.
-4. "ipr_actions": 4-6 конкретных шагов для плана развития по модели 70/20/10
-   (70% практика на рабочем месте; 20% обратная связь и наставничество; 10% обучение, курсы).
+4. "ipr": объект индивидуального плана развития по этой компетенции:
+   - "goal": цель развития (1-2 предложения, что развить и зачем);
+   - "workplace": действие категории «Развитие на рабочем месте» (применение в ежедневных задачах);
+   - "projects": действие категории «Специальные задачи и проекты»;
+   - "feedback": действие категории «Поиск обратной связи» (что и у кого запрашивать);
+   - "mentoring": действие категории «Наставничество»;
+   - "expected_results": ожидаемые результаты (как поймём, что развитие удалось).
 
 Требования: не копируй формулировки дословно — переформулируй; без воды; русский язык;
-управленческий контекст. Если зон роста нет — recommendations и ipr_actions верни пустыми.
-Пример формата: {"report_strengths": ["..."], "report_growth_zones": ["..."], "recommendations": ["..."], "ipr_actions": ["..."]}
+управленческий контекст. Если зон роста нет — recommendations верни пустым, в ipr заполни только goal.
+Пример формата: {"report_strengths": ["..."], "report_growth_zones": ["..."], "recommendations": ["..."], "ipr": {"goal": "...", "workplace": "...", "projects": "...", "feedback": "...", "mentoring": "...", "expected_results": "..."}}
 """
 
 _JSON_SCHEMA = {
@@ -37,9 +42,11 @@ _JSON_SCHEMA = {
         "report_strengths": {"type": "array", "items": {"type": "string"}},
         "report_growth_zones": {"type": "array", "items": {"type": "string"}},
         "recommendations": {"type": "array", "items": {"type": "string"}},
-        "ipr_actions": {"type": "array", "items": {"type": "string"}},
+        "ipr": {"type": "object"},
     },
 }
+
+_IPR_KEYS = ("goal", "workplace", "projects", "feedback", "mentoring", "expected_results")
 
 
 async def enrich_competencies_with_advice(
@@ -47,7 +54,7 @@ async def enrich_competencies_with_advice(
     *,
     participant_name: str,
 ) -> None:
-    """Add LLM-generated 'recommendations' and 'ipr_actions' to each competence in place."""
+    """Add LLM-generated report-style text, recommendations and IPR plan to each competence."""
     semaphore = asyncio.Semaphore(max(1, settings.analysis_llm_max_concurrency))
 
     async def enrich_one(competence: str, data: dict[str, Any]) -> None:
@@ -62,7 +69,7 @@ async def enrich_competencies_with_advice(
         growth_zones = data.get("growth_zones", []) or []
         if not strengths and not growth_zones:
             data["recommendations"] = []
-            data["ipr_actions"] = []
+            data["ipr"] = {}
             return
 
         async with semaphore:
@@ -76,7 +83,7 @@ async def enrich_competencies_with_advice(
                 )
             except Exception as exc:  # noqa: BLE001 - advice must never break report generation
                 logger.error("Advice generation failed for competence %s: %s", competence, exc)
-                advice = {"report_strengths": [], "report_growth_zones": [], "recommendations": [], "ipr_actions": []}
+                advice = {"report_strengths": [], "report_growth_zones": [], "recommendations": [], "ipr": {}}
 
         # Report-style rewrites fall back to the raw (already cleaned) lists.
         if advice["report_strengths"]:
@@ -84,7 +91,7 @@ async def enrich_competencies_with_advice(
         if advice["report_growth_zones"]:
             data["report_growth_zones"] = advice["report_growth_zones"]
         data["recommendations"] = advice["recommendations"] or (_fallback_actions(growth_zones) if growth_zones else [])
-        data["ipr_actions"] = advice["ipr_actions"] or (_fallback_actions(growth_zones) if growth_zones else [])
+        data["ipr"] = advice["ipr"]
 
     await asyncio.gather(
         *(enrich_one(competence, data) for competence, data in competencies.items() if isinstance(data, dict))
@@ -107,7 +114,7 @@ async def _generate_competency_advice(
         f"Средний уровень (шкала 0-3): {level}\n\n"
         f"Проявленные индикаторы (сильные стороны):\n{strengths_text}\n\n"
         f"Непроявленные индикаторы (зоны роста):\n{growth_text}\n\n"
-        "Сформируй report_strengths, report_growth_zones, recommendations и ipr_actions строго по инструкции. "
+        "Сформируй report_strengths, report_growth_zones, recommendations и ipr строго по инструкции. "
         "Верни только JSON."
     )
 
@@ -134,24 +141,39 @@ async def _generate_competency_advice(
     return _coerce_advice(raw)
 
 
-def _coerce_advice(raw: Any) -> dict[str, list[str]]:
+def _coerce_advice(raw: Any) -> dict[str, Any]:
     report_strengths: list[str] = []
     report_growth_zones: list[str] = []
     recommendations: list[str] = []
-    ipr_actions: list[str] = []
+    ipr: dict[str, str] = {}
     if isinstance(raw, dict):
         report_strengths = _as_str_list(raw.get("report_strengths") or raw.get("strengths"))
         report_growth_zones = _as_str_list(raw.get("report_growth_zones") or raw.get("growth_zones"))
         recommendations = _as_str_list(raw.get("recommendations") or raw.get("recommendation"))
-        ipr_actions = _as_str_list(raw.get("ipr_actions") or raw.get("actions") or raw.get("development_actions"))
+        ipr = _coerce_ipr(raw.get("ipr"))
     elif isinstance(raw, list):
         recommendations = _as_str_list(raw)
     return {
         "report_strengths": report_strengths,
         "report_growth_zones": report_growth_zones,
         "recommendations": recommendations,
-        "ipr_actions": ipr_actions,
+        "ipr": ipr,
     }
+
+
+def _coerce_ipr(value: Any) -> dict[str, str]:
+    if not isinstance(value, dict):
+        return {}
+    out: dict[str, str] = {}
+    for key in _IPR_KEYS:
+        raw = value.get(key)
+        if isinstance(raw, str) and raw.strip():
+            out[key] = raw.strip()
+        elif isinstance(raw, list):
+            joined = " ".join(str(item).strip() for item in raw if str(item).strip())
+            if joined:
+                out[key] = joined
+    return out
 
 
 def _as_str_list(value: Any) -> list[str]:

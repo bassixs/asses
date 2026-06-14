@@ -70,16 +70,12 @@ def build_development_plan_text(
         growth_zones = data.get("growth_zones", [])
         if not growth_zones:
             continue
-        display_zones = data.get("report_growth_zones") or growth_zones
-        recommendations = data.get("ipr_actions") or _recommendations(growth_zones)
-        plan[competence] = {"growth_zones": display_zones, "recommendations": recommendations}
+        ipr = data.get("ipr") or {}
+        resources = [_format_course(c) for c in (data.get("courses") or [])]
+        resources += list(data.get("literature") or [])
+        plan[competence] = {"ipr": ipr, "resources": resources}
         lines.append(f"Компетенция: {competence}")
-        lines.append("Зоны развития:")
-        lines.extend(_bullet_lines(display_zones))
-        lines.append("Действия на 4-6 недель:")
-        lines.extend(_bullet_lines(recommendations))
-        lines.append("Как проверить прогресс:")
-        lines.append("- Повторить упражнение или рабочий кейс и собрать поведенческие примеры.")
+        lines.append(f"Цель развития: {ipr.get('goal', '')}")
         lines.append("")
 
     if not plan:
@@ -186,6 +182,21 @@ def save_participant_report_docx(
     doc.save(path)
 
 
+# Fixed development-action categories of the customer's IPR template (70/20/10).
+_IPR_CATEGORIES = [
+    ("workplace", "Развитие на рабочем месте",
+     "конкретные поручения/задачи из ежедневной работы, которые способствуют развитию компетенции"),
+    ("projects", "Специальные задачи и проекты",
+     "участие в проекте или временное назначение, требующие более высокого уровня компетенции"),
+    ("feedback", "Поиск обратной связи",
+     "обсуждение с коллегами, подчинёнными, руководителем своей работы с точки зрения данной компетенции"),
+    ("mentoring", "Наставничество",
+     "наблюдение за человеком, у которого данная компетенция развита высоко, обсуждение его опыта"),
+    ("self_study", "Самообучение",
+     "анализ своей работы, чтение литературы, прохождение курсов, вебинаров, семинаров"),
+]
+
+
 def save_development_plan_docx(
     *,
     path: Path,
@@ -203,42 +214,85 @@ def save_development_plan_docx(
     run.font.size = Pt(20)
     run.font.color.rgb = RGBColor(31, 78, 121)
 
-    subtitle = doc.add_paragraph()
-    subtitle.alignment = WD_ALIGN_PARAGRAPH.CENTER
-    subtitle.add_run(f"Участник: {participant_name}").bold = True
-    if center_name:
-        subtitle.add_run(f"\nАссессмент-центр: {center_name}")
-
     _add_heading(doc, "Что такое ИПР")
     doc.add_paragraph(
-        "Индивидуальный план развития фиксирует зоны роста, цели развития, действия и критерии прогресса. "
-        "План построен на результатах ассессмент-центра и сфокусирован на поведенческих индикаторах, "
-        "которые требуют развития."
+        "Индивидуальный план развития (ИПР) — документ, в котором прописаны долгосрочные и "
+        "краткосрочные карьерные цели сотрудника, его области для развития, а также подробный план "
+        "действий и ресурсы, необходимые для достижения поставленных целей."
     )
+    _add_heading(doc, "Почему важно составлять ИПР", level=2)
+    for item in (
+        "Достижение целей организации: ИПР согласует цели сотрудника и организации.",
+        "Повышение производительности: новые знания и навыки повышают эффективность.",
+        "Повышение мотивации: постановка и достижение целей повышает вовлечённость.",
+        "Регулярная обратная связь: ИПР способствует взаимодействию руководителя и сотрудника.",
+        "Эффективное распределение ресурсов: развитие направляется в зоны наибольшего эффекта.",
+        "Организационная гибкость: новые навыки расширяют возможности сотрудника.",
+    ):
+        _add_bullet(doc, item)
 
-    _add_heading(doc, "Модель 70/20/10")
-    _add_bullet(doc, "70% — практика на рабочем месте и применение новых моделей поведения в реальных задачах.")
-    _add_bullet(doc, "20% — обучение через обратную связь, наставничество и наблюдение за опытом других.")
+    _add_heading(doc, "Модель 70/20/10", level=2)
+    _add_bullet(doc, "70% — обучение на рабочем месте: применение знаний в реальных задачах.")
+    _add_bullet(doc, "20% — опыт других людей: обратная связь, наставничество, наблюдение.")
     _add_bullet(doc, "10% — формальное обучение: курсы, книги, вебинары, тренинги.")
+
+    _add_heading(doc, "Шаблон индивидуального плана развития")
+    _ipr_header_table(doc, participant_name)
 
     plan = plan_json.get("plan", {})
     if not plan:
-        _add_heading(doc, "План действий")
         doc.add_paragraph("Явных зон роста по обработанным упражнениям не найдено.")
-    for competence, data in plan.items():
-        doc.add_page_break()
-        _add_heading(doc, str(competence))
-        _add_heading(doc, "Зоны развития", level=2)
-        _add_list_or_empty(doc, data.get("growth_zones", []), "Не выявлено.")
-        _add_heading(doc, "Действия на 4-6 недель", level=2)
-        _add_list_or_empty(doc, data.get("recommendations", []), "Поддерживать текущий уровень проявления компетенции.")
-        _add_heading(doc, "Критерии прогресса", level=2)
-        _add_bullet(doc, "Участник демонстрирует целевое поведение в рабочей ситуации.")
-        _add_bullet(doc, "Руководитель или наставник подтверждает устойчивость изменений.")
-        _add_bullet(doc, "В повторном упражнении или рабочем кейсе появляются новые позитивные примеры.")
+    for index, (competence, data) in enumerate(plan.items(), start=1):
+        ipr = data.get("ipr") or {}
+        resources = data.get("resources") or []
+        doc.add_paragraph()
+        _add_heading(doc, f"Область развития №{index}", level=2)
+        doc.add_paragraph(f"Компетенция: {competence}")
+        doc.add_paragraph(f"Цель развития: {ipr.get('goal', '')}")
+        _ipr_actions_table(doc, ipr=ipr, resources=resources)
 
     path.parent.mkdir(parents=True, exist_ok=True)
     doc.save(path)
+
+
+def _ipr_header_table(doc: Document, participant_name: str) -> None:
+    rows = [
+        ("ФИО сотрудника", participant_name),
+        ("Должность сотрудника", ""),
+        ("ФИО руководителя", ""),
+        ("Должность руководителя", ""),
+        ("Период выполнения ИПР", ""),
+        ("Дата заполнения", ""),
+    ]
+    table = doc.add_table(rows=len(rows), cols=2)
+    table.style = "Table Grid"
+    for ri, (label, value) in enumerate(rows):
+        table.rows[ri].cells[0].text = label
+        table.rows[ri].cells[1].text = value
+
+
+def _ipr_actions_table(doc: Document, *, ipr: dict[str, Any], resources: list[str]) -> None:
+    headers = ["Действия", "Ресурсы", "Сроки", "Ожидаемые результаты", "Оценка о выполнении"]
+    table = doc.add_table(rows=1, cols=len(headers))
+    table.style = "Table Grid"
+    for ci, head in enumerate(headers):
+        cell = table.rows[0].cells[ci]
+        cell.text = head
+        for paragraph in cell.paragraphs:
+            for run in paragraph.runs:
+                run.bold = True
+
+    expected = str(ipr.get("expected_results") or "")
+    for ri, (key, title, description) in enumerate(_IPR_CATEGORIES):
+        cells = table.add_row().cells
+        action = str(ipr.get(key) or "")
+        action_text = f"{title}\n({description})"
+        if action:
+            action_text += f"\n• {action}"
+        cells[0].text = action_text
+        if key == "self_study" and resources:
+            cells[1].text = "\n".join(f"• {r}" for r in resources)
+        cells[3].text = expected if ri == 0 else ""
 
 
 def _aggregate(exercise_results: list[dict[str, Any]]) -> dict[str, dict[str, Any]]:
