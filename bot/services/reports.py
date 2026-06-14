@@ -70,11 +70,12 @@ def build_development_plan_text(
         growth_zones = data.get("growth_zones", [])
         if not growth_zones:
             continue
+        display_zones = data.get("report_growth_zones") or growth_zones
         recommendations = data.get("ipr_actions") or _recommendations(growth_zones)
-        plan[competence] = {"growth_zones": growth_zones, "recommendations": recommendations}
+        plan[competence] = {"growth_zones": display_zones, "recommendations": recommendations}
         lines.append(f"Компетенция: {competence}")
         lines.append("Зоны развития:")
-        lines.extend(_bullet_lines(growth_zones))
+        lines.extend(_bullet_lines(display_zones))
         lines.append("Действия на 4-6 недель:")
         lines.extend(_bullet_lines(recommendations))
         lines.append("Как проверить прогресс:")
@@ -152,10 +153,12 @@ def save_participant_report_docx(
         doc.add_paragraph(_nearest_level_description(level))
 
         _add_heading(doc, "Сильные стороны", level=2)
-        _add_list_or_empty(doc, data.get("strengths", []), "Не выявлено по обработанным упражнениям.")
+        strengths = data.get("report_strengths") or data.get("strengths", [])
+        _add_list_or_empty(doc, strengths, "Не выявлено по обработанным упражнениям.")
 
         _add_heading(doc, "Зоны роста", level=2)
-        _add_list_or_empty(doc, data.get("growth_zones", []), "Не выявлено по обработанным упражнениям.")
+        growth_zones = data.get("report_growth_zones") or data.get("growth_zones", [])
+        _add_list_or_empty(doc, growth_zones, "Не выявлено по обработанным упражнениям.")
 
         _add_heading(doc, "Рекомендации по развитию", level=2)
         recommendations = data.get("recommendations") or _recommendations(data.get("growth_zones", []))
