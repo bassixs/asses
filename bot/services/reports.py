@@ -111,7 +111,9 @@ def save_participant_report_docx(
     subtitle.alignment = WD_ALIGN_PARAGRAPH.CENTER
     subtitle.add_run(f"Участник: {participant_name}").bold = True
     if center_name:
-        subtitle.add_run(f"\nАссессмент-центр: {center_name}")
+        center_line = doc.add_paragraph()
+        center_line.alignment = WD_ALIGN_PARAGRAPH.CENTER
+        center_line.add_run(f"Ассессмент-центр: {center_name}")
 
     _add_heading(doc, "Оценочные процедуры")
     if exercise_names:

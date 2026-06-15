@@ -17,15 +17,6 @@ def main_menu_keyboard() -> ReplyKeyboardMarkup:
 def transcript_actions_keyboard(record_id: int) -> InlineKeyboardMarkup:
     return InlineKeyboardMarkup(
         inline_keyboard=[
-            [InlineKeyboardButton(text="Оценить компетенции", callback_data=f"assess:{record_id}")],
-            [InlineKeyboardButton(text="Скачать расшифровку", callback_data=f"transcript_file:{record_id}")],
-        ]
-    )
-
-
-def transcript_download_keyboard(record_id: int) -> InlineKeyboardMarkup:
-    return InlineKeyboardMarkup(
-        inline_keyboard=[
             [InlineKeyboardButton(text="Скачать расшифровку", callback_data=f"transcript_file:{record_id}")],
         ]
     )
@@ -54,9 +45,3 @@ def report_format_keyboard(participant_id: int) -> InlineKeyboardMarkup:
     )
 
 
-def assessment_actions_keyboard(record_id: int) -> InlineKeyboardMarkup:
-    return InlineKeyboardMarkup(
-        inline_keyboard=[
-            [InlineKeyboardButton(text="Повторить оценку", callback_data=f"assess:{record_id}")],
-        ]
-    )
