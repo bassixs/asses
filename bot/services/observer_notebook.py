@@ -36,6 +36,9 @@ class IndicatorRow:
     status_col: int = 4
     comment_col: int = 5
     level_col: int = 6
+    # Row of the behavioural subgroup header (its yellow level cell), if the notebook
+    # groups indicators into subgroups within a competence.
+    group_row: int | None = None
 
 
 class IndicatorEvidence(BaseModel):
@@ -69,6 +72,7 @@ def extract_notebook_indicators(workbook_path: Path) -> list[IndicatorRow]:
     sheet = workbook.active
     indicators: list[IndicatorRow] = []
     current_competence = ""
+    current_group_row: int | None = None
     layout = _detect_notebook_layout(sheet)
 
     for row in range(1, sheet.max_row + 1):
@@ -78,8 +82,14 @@ def extract_notebook_indicators(workbook_path: Path) -> list[IndicatorRow]:
 
         if competence_raw and not _looks_like_column_header(competence_raw) and not _looks_like_level(competence_raw):
             current_competence = competence_raw
+            current_group_row = None
 
         if not indicator or _looks_like_column_header(indicator) or _looks_like_column_header(status_header):
+            # A subgroup header repeats the "Проявления"/"Комментарии" column titles and
+            # carries the subgroup name in the indicator column — its row holds the
+            # subgroup's yellow level cell.
+            if indicator and not _looks_like_column_header(indicator) and _looks_like_column_header(status_header):
+                current_group_row = row
             continue
 
         competence = "" if _looks_like_level(competence_raw) else competence_raw
@@ -96,6 +106,7 @@ def extract_notebook_indicators(workbook_path: Path) -> list[IndicatorRow]:
                 status_col=layout["status_col"],
                 comment_col=layout["comment_col"],
                 level_col=layout["level_col"],
+                group_row=current_group_row,
             )
         )
 
@@ -376,6 +387,7 @@ def fill_observer_notebook(
 
     levels = _calculate_competency_levels(indicators, result_by_id)
     _write_competency_levels(sheet, indicator_by_row, levels)
+    _write_subgroup_levels(sheet, indicators, result_by_id)
 
     output_path.parent.mkdir(parents=True, exist_ok=True)
     workbook.save(output_path)
@@ -499,6 +511,27 @@ def _write_competency_levels(
         if indicator and indicator.competence not in written:
             sheet.cell(row=row, column=indicator.level_col).value = levels[indicator.competence]["level"]
             written.add(indicator.competence)
+
+
+def _write_subgroup_levels(
+    sheet,
+    indicators: list[IndicatorRow],
+    result_by_id: dict[str, IndicatorAnalysis],
+) -> None:
+    """Write a level into each behavioural-subgroup yellow cell (same formula, per subgroup)."""
+    grouped: dict[int, list[IndicatorStatus]] = defaultdict(list)
+    level_col_by_group: dict[int, int] = {}
+    for indicator in indicators:
+        if indicator.group_row is None:
+            continue
+        grouped[indicator.group_row].append(result_by_id[indicator.indicator_id].status)
+        level_col_by_group[indicator.group_row] = indicator.level_col
+
+    for group_row, statuses in grouped.items():
+        observed = [status for status in statuses if status != "НЗ"]
+        percent = (sum(1 for s in observed if s == "+") / len(observed) * 100) if observed else 0.0
+        level = _level_from_percent(percent) if observed else 0
+        sheet.cell(row=group_row, column=level_col_by_group[group_row]).value = level
 
 
 def _level_from_percent(percent: float) -> float:
