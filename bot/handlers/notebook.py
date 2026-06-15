@@ -4,7 +4,6 @@ import asyncio
 from html import escape
 import json
 import logging
-import re
 from pathlib import Path
 from typing import Any
 
@@ -24,11 +23,10 @@ from bot.services.observer_notebook import (
     extract_notebook_indicators,
     fill_observer_notebook,
 )
+from bot.services.telegram_files import download_telegram_file
 
 logger = logging.getLogger(__name__)
 router = Router()
-
-_SAFE_FILE_NAME_RE = re.compile(r"[^A-Za-z0-9_.-]+")
 
 
 def _load_segments(raw: str | None) -> list[dict[str, Any]]:
@@ -51,16 +49,13 @@ def _is_excel_document(message: Message) -> bool:
 async def _download_notebook(bot: Bot, message: Message) -> Path:
     if not message.document:
         raise ValueError("Message has no document")
-
-    tg_file = await bot.get_file(message.document.file_id)
-    if tg_file.file_path is None:
-        raise RuntimeError("Telegram did not return file_path")
-
-    settings.download_dir.mkdir(parents=True, exist_ok=True)
-    safe_name = _SAFE_FILE_NAME_RE.sub("_", message.document.file_name or message.document.file_id)
-    destination = settings.download_dir / f"notebook_{message.document.file_unique_id}_{safe_name}"
-    await bot.download_file(tg_file.file_path, destination=destination)
-    return destination
+    # Uses the same retry-enabled download as audio (local Bot API can drop connections).
+    return await download_telegram_file(
+        bot,
+        message.document.file_id,
+        "notebook",
+        message.document.file_name,
+    )
 
 
 def _parse_fill_args(message: Message) -> tuple[int, int] | None:
