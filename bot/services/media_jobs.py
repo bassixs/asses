@@ -13,7 +13,7 @@ from sqlalchemy import select
 
 from bot.config import settings
 from bot.database import async_session_maker
-from bot.keyboards import transcript_actions_keyboard
+from bot.keyboards import transcript_actions_keyboard, transcript_download_keyboard
 from bot.models import Exercise, InterviewRecord, MediaProcessingJob, Participant
 from bot.services.audio_chunking import merge_chunk_transcripts
 from bot.services.audio_preprocessing import (
@@ -137,7 +137,7 @@ async def _process_job(bot: Bot, job_id: int) -> None:
                 job.chat_id,
                 f"✅ Расшифровка готова (запись #{record_id}) и привязана к упражнению.\n"
                 "Теперь отправьте блокнот наблюдателя по этому упражнению (.xlsx) 📊",
-                reply_markup=transcript_actions_keyboard(record_id),
+                reply_markup=transcript_download_keyboard(record_id),
             )
         else:
             await bot.send_message(

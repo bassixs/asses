@@ -23,6 +23,14 @@ def transcript_actions_keyboard(record_id: int) -> InlineKeyboardMarkup:
     )
 
 
+def transcript_download_keyboard(record_id: int) -> InlineKeyboardMarkup:
+    return InlineKeyboardMarkup(
+        inline_keyboard=[
+            [InlineKeyboardButton(text="Скачать расшифровку", callback_data=f"transcript_file:{record_id}")],
+        ]
+    )
+
+
 def welcome_keyboard() -> InlineKeyboardMarkup:
     return InlineKeyboardMarkup(
         inline_keyboard=[
