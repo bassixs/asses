@@ -15,6 +15,7 @@ from pydantic import BaseModel, Field, ValidationError, field_validator
 
 from bot.config import settings
 from bot.services.llm_json import LLMJSONError, complete_json_openai_compatible
+from bot.services.exercise_context import build_exercise_analysis_block
 from bot.services.role_labeling import extract_participant_transcript
 from bot.services.yandex_gpt import complete_json
 
@@ -123,9 +124,13 @@ async def analyze_notebook_indicators(
     *,
     transcript: str,
     indicators: list[IndicatorRow],
+    exercise_name: str | None = None,
 ) -> NotebookAnalysisReport:
     system_prompt = _build_notebook_system_prompt()
     participant_transcript = extract_participant_transcript(transcript)
+    exercise_context = build_exercise_analysis_block(exercise_name)
+    if exercise_context:
+        logger.info("Notebook analysis using exercise context for '%s'", exercise_name)
 
     batch_size = max(1, settings.notebook_analysis_batch_size)
     batches = [indicators[i : i + batch_size] for i in range(0, len(indicators), batch_size)]
@@ -141,6 +146,7 @@ async def analyze_notebook_indicators(
                     indicators=batch,
                     batch_index=batch_index,
                     batch_count=len(batches),
+                    exercise_context=exercise_context,
                 )
             except (LLMJSONError, NotebookProcessingError) as exc:
                 # One bad batch should not fail the whole exercise; its indicators are
@@ -188,6 +194,7 @@ async def _analyze_indicator_batch(
     indicators: list[IndicatorRow],
     batch_index: int,
     batch_count: int,
+    exercise_context: str = "",
 ) -> NotebookAnalysisReport:
     payload = [
         {
@@ -197,7 +204,11 @@ async def _analyze_indicator_batch(
         }
         for item in indicators
     ]
-    user_prompt = _build_notebook_user_prompt(transcript=transcript, indicators=payload)
+    user_prompt = _build_notebook_user_prompt(
+        transcript=transcript,
+        indicators=payload,
+        exercise_context=exercise_context,
+    )
     logger.info("Notebook analysis batch %s/%s: indicators=%s", batch_index, batch_count, len(indicators))
 
     if settings.analysis_llm_provider.lower().strip() == "yandex":
@@ -427,13 +438,20 @@ def _build_notebook_system_prompt() -> str:
 6. Для "-" evidence должен быть пустым.
 7. Для "НЗ" evidence должен быть пустым, а observable_reason должен объяснять, почему ситуация не позволяла замерить индикатор.
 8. Не придумывай цитаты, таймкоды, действия и роли.
-9. Возвращай только валидный JSON по схеме.
+9. Если дан "Контекст упражнения", опирайся на него, решая, мог ли индикатор наблюдаться: если упражнение по сценарию не создаёт ситуацию для индикатора — ставь "НЗ", а не "-".
+10. Возвращай только валидный JSON по схеме.
 """.strip()
 
 
-def _build_notebook_user_prompt(*, transcript: str, indicators: list[dict[str, str]]) -> str:
+def _build_notebook_user_prompt(
+    *,
+    transcript: str,
+    indicators: list[dict[str, str]],
+    exercise_context: str = "",
+) -> str:
+    context_block = f"{exercise_context}\n\n" if exercise_context else ""
     return f"""
-Транскрипт упражнения:
+{context_block}Транскрипт упражнения:
 {transcript}
 
 Поведенческие индикаторы из блокнота наблюдателя:

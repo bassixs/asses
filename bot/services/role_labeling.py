@@ -11,6 +11,7 @@ import aiohttp
 from pydantic import BaseModel, Field, ValidationError
 
 from bot.config import settings
+from bot.services.exercise_context import build_role_labeling_hint
 from bot.services.speechkit import normalize_transcript_text
 
 logger = logging.getLogger(__name__)
@@ -362,11 +363,13 @@ def _tail_text(segments: list[RoleSegment], *, max_chars: int = 1200) -> str:
 def _system_prompt(*, assessed_participant_name: str | None, exercise_name: str | None) -> str:
     known_context = ""
     if assessed_participant_name or exercise_name:
+        exercise_hint = build_role_labeling_hint(exercise_name)
         known_context = "\n".join(
             part
             for part in (
                 f"Известный оцениваемый участник: {assessed_participant_name}." if assessed_participant_name else "",
                 f"Название упражнения: {exercise_name}." if exercise_name else "",
+                exercise_hint,
             )
             if part
         )

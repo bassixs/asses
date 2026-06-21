@@ -301,7 +301,11 @@ async def run_exercise_processing(message: Message, session: AsyncSession, exerc
     input_path = Path(notebook.file_path)
     indicators = extract_notebook_indicators(input_path)
     try:
-        report = await analyze_notebook_indicators(transcript=record.transcript, indicators=indicators)
+        report = await analyze_notebook_indicators(
+            transcript=record.transcript,
+            indicators=indicators,
+            exercise_name=exercise.name,
+        )
     except (NotebookProcessingError, LLMJSONError) as exc:
         logging.getLogger(__name__).exception("process_exercise analysis failed for exercise_id=%s", exercise.id)
         await message.answer(f"Не удалось обработать упражнение #{exercise.id}: {escape(str(exc), quote=False)}")

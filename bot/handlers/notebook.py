@@ -15,7 +15,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from bot.config import settings
 from bot.database import async_session_maker
-from bot.models import InterviewRecord, NotebookFillResult, ObserverNotebook
+from bot.models import Exercise, InterviewRecord, NotebookFillResult, ObserverNotebook
 from bot.services.observer_notebook import (
     NotebookProcessingError,
     analyze_notebook_indicators,
@@ -176,7 +176,15 @@ async def _fill_notebook_and_send(
         try:
             input_path = Path(notebook.file_path)
             indicators = extract_notebook_indicators(input_path)
-            report = await analyze_notebook_indicators(transcript=record.transcript, indicators=indicators)
+            exercise_name = None
+            if record.exercise_id is not None:
+                exercise = await session.scalar(select(Exercise).where(Exercise.id == record.exercise_id))
+                exercise_name = exercise.name if exercise is not None else None
+            report = await analyze_notebook_indicators(
+                transcript=record.transcript,
+                indicators=indicators,
+                exercise_name=exercise_name,
+            )
             attach_evidence_timestamps(report, _load_segments(record.transcript_segments))
             output_path = settings.download_dir.parent / "reports" / f"filled_record_{record.id}_notebook_{notebook.id}.xlsx"
             result_json = fill_observer_notebook(
