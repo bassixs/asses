@@ -177,13 +177,17 @@ async def _fill_notebook_and_send(
             input_path = Path(notebook.file_path)
             indicators = extract_notebook_indicators(input_path)
             exercise_name = None
+            exercise_instructions = None
             if record.exercise_id is not None:
                 exercise = await session.scalar(select(Exercise).where(Exercise.id == record.exercise_id))
-                exercise_name = exercise.name if exercise is not None else None
+                if exercise is not None:
+                    exercise_name = exercise.name
+                    exercise_instructions = exercise.instructions_text
             report = await analyze_notebook_indicators(
                 transcript=record.transcript,
                 indicators=indicators,
                 exercise_name=exercise_name,
+                exercise_instructions=exercise_instructions,
             )
             attach_evidence_timestamps(report, _load_segments(record.transcript_segments))
             output_path = settings.download_dir.parent / "reports" / f"filled_record_{record.id}_notebook_{notebook.id}.xlsx"

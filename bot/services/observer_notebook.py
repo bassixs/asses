@@ -125,12 +125,14 @@ async def analyze_notebook_indicators(
     transcript: str,
     indicators: list[IndicatorRow],
     exercise_name: str | None = None,
+    exercise_instructions: str | None = None,
 ) -> NotebookAnalysisReport:
     system_prompt = _build_notebook_system_prompt()
     participant_transcript = extract_participant_transcript(transcript)
-    exercise_context = build_exercise_analysis_block(exercise_name)
+    exercise_context = build_exercise_analysis_block(exercise_name, exercise_instructions)
     if exercise_context:
-        logger.info("Notebook analysis using exercise context for '%s'", exercise_name)
+        source = "uploaded instructions" if exercise_instructions else "bundled library"
+        logger.info("Notebook analysis using exercise context for '%s' (%s)", exercise_name, source)
 
     batch_size = max(1, settings.notebook_analysis_batch_size)
     batches = [indicators[i : i + batch_size] for i in range(0, len(indicators), batch_size)]

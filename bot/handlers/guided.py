@@ -34,8 +34,14 @@ from bot.models import (
     ObserverNotebook,
     Participant,
 )
+from bot.services.instruction_files import (
+    InstructionExtractionError,
+    append_instructions,
+    extract_instruction_text,
+    is_supported_instruction,
+)
 from bot.services.observer_notebook import NotebookProcessingError, extract_notebook_indicators
-from bot.services.telegram_files import extract_media_meta
+from bot.services.telegram_files import download_telegram_file, extract_media_meta
 
 logger = logging.getLogger(__name__)
 router = Router()
@@ -45,11 +51,38 @@ class GuidedFlow(StatesGroup):
     center_name = State()
     participant_name = State()
     exercise_name = State()
+    awaiting_instructions = State()
     awaiting_audio = State()
     awaiting_notebook = State()
 
 
 _MENU_ROW = [InlineKeyboardButton(text="🏠 В меню", callback_data="guided:home")]
+
+
+def _instructions_keyboard(has_files: bool) -> InlineKeyboardMarkup:
+    next_text = "➡️ Дальше, к аудио" if has_files else "⏭ Пропустить (без инструкций)"
+    return InlineKeyboardMarkup(
+        inline_keyboard=[
+            [InlineKeyboardButton(text=next_text, callback_data="guided:instructions_done")],
+            _MENU_ROW,
+        ]
+    )
+
+
+_INSTRUCTIONS_PROMPT = (
+    "📎 Пришлите инструкции к этому упражнению (PDF или DOCX) — материалы ведущего, "
+    "наблюдателя/ролевого игрока и участника. Можно несколько файлов по очереди.\n\n"
+    "Они помогают точнее определить роли и понять, какие индикаторы могли наблюдаться "
+    "(для «НЗ»). Если инструкций нет — нажмите «Пропустить»."
+)
+
+
+async def _go_to_audio(message: Message, state: FSMContext) -> None:
+    await state.set_state(GuidedFlow.awaiting_audio)
+    await message.answer(
+        "🎙 Отправьте аудиозапись этого упражнения:",
+        reply_markup=_menu_keyboard(),
+    )
 
 
 def _next_step_keyboard() -> InlineKeyboardMarkup:
@@ -95,7 +128,8 @@ async def cb_help(callback: CallbackQuery) -> None:
         "ℹ️ Как пользоваться ботом\n\n"
         "📝 Расшифровать запись — пришлите аудио, получите текст с разметкой ролей.\n\n"
         "📊 Оценить одно упражнение — бот проведёт по шагам: центр → участник → упражнение → "
-        "аудио → блокнот наблюдателя (.xlsx), и выдаст заполненный блокнот, отчёт и ИПР.\n\n"
+        "инструкции упражнения (PDF/DOCX, по желанию) → аудио → блокнот наблюдателя (.xlsx), "
+        "и выдаст заполненный блокнот, отчёт и ИПР.\n\n"
         "🏆 Оценить все упражнения — то же, но можно добавить несколько упражнений одному "
         "участнику; отчёт и ИПР построятся по всем сразу.\n\n"
         "На каждом шаге бот подсказывает, что отправить. Команды (/create_center и т.д.) тоже работают.\n\n"
@@ -188,11 +222,80 @@ async def step_exercise_name(message: Message, session: AsyncSession, state: FSM
     await session.commit()
     await session.refresh(exercise)
     await state.update_data(exercise_id=exercise.id)
-    await state.set_state(GuidedFlow.awaiting_audio)
+    await state.set_state(GuidedFlow.awaiting_instructions)
     await message.answer(
-        f"✅ Упражнение «{exercise.name}» создано.\n\n🎙 Отправьте аудиозапись этого упражнения:",
-        reply_markup=_menu_keyboard(),
+        f"✅ Упражнение «{exercise.name}» создано.\n\n{_INSTRUCTIONS_PROMPT}",
+        reply_markup=_instructions_keyboard(has_files=False),
     )
+
+
+# ---- instructions step ---------------------------------------------------------------------
+
+@router.message(GuidedFlow.awaiting_instructions, F.document)
+async def step_instructions(message: Message, bot: Bot, session: AsyncSession, state: FSMContext) -> None:
+    if message.from_user is None or message.document is None:
+        return
+    file_name = message.document.file_name or "instruction"
+    if not is_supported_instruction(file_name):
+        await message.answer(
+            "Нужен файл инструкции в формате PDF или DOCX. "
+            "Пришлите такой файл или нажмите «Пропустить».",
+            reply_markup=_instructions_keyboard(has_files=False),
+        )
+        return
+
+    data = await state.get_data()
+    exercise_id = int(data["exercise_id"]) if data.get("exercise_id") else None
+    exercise = await session.get(Exercise, exercise_id) if exercise_id else None
+    if exercise is None:
+        await state.clear()
+        await message.answer("Не нашёл активное упражнение. Начните заново.", reply_markup=_menu_keyboard())
+        return
+
+    await message.answer(f"Принял «{escape(file_name, quote=False)}», читаю...")
+    try:
+        local_path = await download_telegram_file(bot, message.document.file_id, "instruction", file_name)
+        text = extract_instruction_text(local_path)
+    except InstructionExtractionError as exc:
+        await message.answer(
+            f"Не удалось прочитать файл: {escape(str(exc), quote=False)}\n"
+            "Пришлите другой файл или нажмите «Пропустить».",
+            reply_markup=_instructions_keyboard(has_files=bool(exercise.instructions_text)),
+        )
+        return
+    except Exception:
+        logger.exception("Guided instruction upload failed")
+        await message.answer(
+            "Ошибка при загрузке файла (возможно, связь с Telegram). Пришлите файл ещё раз.",
+            reply_markup=_instructions_keyboard(has_files=bool(exercise.instructions_text)),
+        )
+        return
+
+    exercise.instructions_text = append_instructions(exercise.instructions_text, text, source=file_name)
+    await session.commit()
+    await message.answer(
+        f"✅ Инструкция добавлена ({len(text)} символов). "
+        "Пришлите ещё файл или нажмите «Дальше, к аудио».",
+        reply_markup=_instructions_keyboard(has_files=True),
+    )
+
+
+@router.message(GuidedFlow.awaiting_instructions, F.text)
+async def step_instructions_text(message: Message, state: FSMContext) -> None:
+    data = await state.get_data()
+    has_files = bool(data.get("exercise_id"))
+    await message.answer(
+        "Жду файл инструкции (PDF или DOCX). Если инструкций нет — нажмите кнопку ниже.",
+        reply_markup=_instructions_keyboard(has_files=has_files),
+    )
+
+
+@router.callback_query(GuidedFlow.awaiting_instructions, F.data == "guided:instructions_done")
+async def cb_instructions_done(callback: CallbackQuery, state: FSMContext) -> None:
+    if callback.message is None:
+        return
+    await callback.answer()
+    await _go_to_audio(callback.message, state)
 
 
 # ---- audio step ----------------------------------------------------------------------------

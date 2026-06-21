@@ -67,11 +67,21 @@ def get_exercise_context(name: str | None) -> dict[str, Any] | None:
     return library.get(key)
 
 
-def build_exercise_analysis_block(name: str | None) -> str:
-    """Render a compact context block for the observer-notebook analysis prompt.
+def build_exercise_analysis_block(name: str | None, instructions_text: str | None = None) -> str:
+    """Render a context block for the observer-notebook analysis prompt.
 
-    Empty string when the exercise is unknown, so analysis behaves exactly as before.
+    Uploaded instruction text (if any) takes precedence; otherwise the bundled
+    library is used. Empty string when neither is available, so analysis behaves
+    exactly as before.
     """
+    if instructions_text and instructions_text.strip():
+        return (
+            f"Инструкции к упражнению «{name or '—'}» (материалы ведущего, наблюдателя и участника). "
+            "Используй их, чтобы понять сценарий: кто ролевой игрок, какие ситуации создаёт упражнение "
+            "(это нужно, чтобы корректно ставить «НЗ»):\n"
+            f"{instructions_text.strip()}"
+        )
+
     context = get_exercise_context(name)
     if not context:
         return ""
@@ -89,12 +99,20 @@ def build_exercise_analysis_block(name: str | None) -> str:
     return "\n".join(parts)
 
 
-def build_role_labeling_hint(name: str | None) -> str:
+def build_role_labeling_hint(name: str | None, instructions_text: str | None = None) -> str:
     """Render the role-play context for the role-labeling prompt.
 
     Tells the model who the role-player ('ведущий') is and who the assessed
-    participant ('участник') is in this specific exercise. Empty when unknown.
+    participant ('участник') is in this exercise. Uploaded instructions take
+    precedence over the bundled library. Empty when neither is available.
     """
+    if instructions_text and instructions_text.strip():
+        return (
+            f"Инструкции к упражнению «{name or '—'}» (помогают понять, кто ролевой игрок/ведущий, "
+            "а кто оцениваемый участник):\n"
+            f"{instructions_text.strip()}"
+        )
+
     context = get_exercise_context(name)
     if not context:
         return ""

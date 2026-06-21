@@ -66,6 +66,10 @@ class Exercise(Base):
     user_id: Mapped[int] = mapped_column(BigInteger, index=True)
     name: Mapped[str] = mapped_column(String(512))
     description: Mapped[str | None] = mapped_column(Text, nullable=True)
+    # Concatenated text extracted from uploaded exercise instruction files
+    # (facilitator / observer / participant). Used as context for role labeling
+    # and the observer-notebook analysis ("НЗ" decisions). Empty when none uploaded.
+    instructions_text: Mapped[str | None] = mapped_column(Text, nullable=True)
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True),
         default=lambda: datetime.now(timezone.utc),

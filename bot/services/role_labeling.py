@@ -37,6 +37,7 @@ async def label_transcript_roles(
     *,
     assessed_participant_name: str | None = None,
     exercise_name: str | None = None,
+    exercise_instructions: str | None = None,
 ) -> str:
     cleaned = _strip_export_header(normalize_transcript_text(transcript))
     if not settings.role_labeling_enabled or not cleaned:
@@ -56,6 +57,7 @@ async def label_transcript_roles(
             previous_tail=previous_tail,
             assessed_participant_name=assessed_participant_name,
             exercise_name=exercise_name,
+            exercise_instructions=exercise_instructions,
         )
         labeled_parts.append(_format_segments(chunk_result.segments))
         previous_tail = _tail_text(chunk_result.segments)
@@ -86,6 +88,7 @@ async def _label_chunk(
     previous_tail: str,
     assessed_participant_name: str | None,
     exercise_name: str | None,
+    exercise_instructions: str | None = None,
     depth: int = 0,
 ) -> RoleLabeledTranscript:
     try:
@@ -94,6 +97,7 @@ async def _label_chunk(
             previous_tail=previous_tail,
             assessed_participant_name=assessed_participant_name,
             exercise_name=exercise_name,
+            exercise_instructions=exercise_instructions,
         )
     except RoleLabelingError:
         if depth >= 3 or len(chunk) <= 1200:
@@ -112,6 +116,7 @@ async def _label_chunk(
             previous_tail=tail,
             assessed_participant_name=assessed_participant_name,
             exercise_name=exercise_name,
+            exercise_instructions=exercise_instructions,
             depth=depth + 1,
         )
         segments.extend(labeled.segments)
@@ -125,11 +130,13 @@ async def _label_chunk_once(
     previous_tail: str,
     assessed_participant_name: str | None,
     exercise_name: str | None,
+    exercise_instructions: str | None = None,
 ) -> RoleLabeledTranscript:
     payload = await _complete_json(
         system_prompt=_system_prompt(
             assessed_participant_name=assessed_participant_name,
             exercise_name=exercise_name,
+            exercise_instructions=exercise_instructions,
         ),
         user_prompt=_user_prompt(
             chunk=chunk,
@@ -360,10 +367,15 @@ def _tail_text(segments: list[RoleSegment], *, max_chars: int = 1200) -> str:
     return tail[-max_chars:]
 
 
-def _system_prompt(*, assessed_participant_name: str | None, exercise_name: str | None) -> str:
+def _system_prompt(
+    *,
+    assessed_participant_name: str | None,
+    exercise_name: str | None,
+    exercise_instructions: str | None = None,
+) -> str:
     known_context = ""
     if assessed_participant_name or exercise_name:
-        exercise_hint = build_role_labeling_hint(exercise_name)
+        exercise_hint = build_role_labeling_hint(exercise_name, exercise_instructions)
         known_context = "\n".join(
             part
             for part in (

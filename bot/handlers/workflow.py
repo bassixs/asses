@@ -305,6 +305,7 @@ async def run_exercise_processing(message: Message, session: AsyncSession, exerc
             transcript=record.transcript,
             indicators=indicators,
             exercise_name=exercise.name,
+            exercise_instructions=exercise.instructions_text,
         )
     except (NotebookProcessingError, LLMJSONError) as exc:
         logging.getLogger(__name__).exception("process_exercise analysis failed for exercise_id=%s", exercise.id)
