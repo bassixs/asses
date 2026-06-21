@@ -7,11 +7,18 @@ from pathlib import Path
 from aiogram import Bot, F, Router
 from aiogram.fsm.context import FSMContext
 from aiogram.fsm.state import State, StatesGroup
-from aiogram.types import CallbackQuery, InlineKeyboardButton, InlineKeyboardMarkup, Message
+from aiogram.types import (
+    CallbackQuery,
+    ErrorEvent,
+    InlineKeyboardButton,
+    InlineKeyboardMarkup,
+    Message,
+)
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from bot.config import settings
+from bot.keyboards import welcome_keyboard
 from bot.handlers.notebook import _download_notebook
 from bot.handlers.workflow import (
     generate_ipr_document,
@@ -41,18 +48,38 @@ class GuidedFlow(StatesGroup):
     awaiting_notebook = State()
 
 
+_MENU_ROW = [InlineKeyboardButton(text="🏠 В меню", callback_data="guided:home")]
+
+
 def _next_step_keyboard() -> InlineKeyboardMarkup:
     return InlineKeyboardMarkup(
         inline_keyboard=[
             [InlineKeyboardButton(text="➕ Ещё упражнение", callback_data="guided:add_exercise")],
             [InlineKeyboardButton(text="📄 Сформировать отчёт", callback_data="guided:finish_report")],
+            _MENU_ROW,
         ]
     )
 
 
+def _retry_keyboard() -> InlineKeyboardMarkup:
+    return InlineKeyboardMarkup(
+        inline_keyboard=[
+            [InlineKeyboardButton(text="🔄 Попробовать ещё раз", callback_data="guided:retry")],
+            _MENU_ROW,
+        ]
+    )
+
+
+def _menu_keyboard() -> InlineKeyboardMarkup:
+    return InlineKeyboardMarkup(inline_keyboard=[_MENU_ROW])
+
+
 def _ipr_keyboard(participant_id: int) -> InlineKeyboardMarkup:
     return InlineKeyboardMarkup(
-        inline_keyboard=[[InlineKeyboardButton(text="📋 Сформировать ИПР", callback_data=f"guided:make_ipr:{participant_id}")]]
+        inline_keyboard=[
+            [InlineKeyboardButton(text="📋 Сформировать ИПР", callback_data=f"guided:make_ipr:{participant_id}")],
+            _MENU_ROW,
+        ]
     )
 
 
@@ -83,7 +110,10 @@ async def cb_transcribe(callback: CallbackQuery, state: FSMContext) -> None:
     await state.update_data(mode="transcribe")
     await state.set_state(GuidedFlow.awaiting_audio)
     await callback.answer()
-    await callback.message.answer("🎙 Отправьте аудиозапись (голосовое, аудио или файл) — расшифрую её.")
+    await callback.message.answer(
+        "🎙 Отправьте аудиозапись (голосовое, аудио или файл) — расшифрую её.",
+        reply_markup=_menu_keyboard(),
+    )
 
 
 @router.callback_query(F.data.in_({"guided:assess_single", "guided:assess_full"}))
@@ -95,7 +125,7 @@ async def cb_assess(callback: CallbackQuery, state: FSMContext) -> None:
     await state.update_data(mode=mode)
     await state.set_state(GuidedFlow.center_name)
     await callback.answer()
-    await callback.message.answer("🏢 Введите название центра оценки:")
+    await callback.message.answer("🏢 Введите название центра оценки:", reply_markup=_menu_keyboard())
 
 
 # ---- guided text steps ---------------------------------------------------------------------
@@ -111,7 +141,10 @@ async def step_center_name(message: Message, session: AsyncSession, state: FSMCo
     await session.refresh(center)
     await state.update_data(center_id=center.id)
     await state.set_state(GuidedFlow.participant_name)
-    await message.answer(f"✅ Центр «{center.name}» создан.\n\n👤 Введите ФИО участника:")
+    await message.answer(
+        f"✅ Центр «{center.name}» создан.\n\n👤 Введите ФИО участника:",
+        reply_markup=_menu_keyboard(),
+    )
 
 
 @router.message(GuidedFlow.participant_name, F.text)
@@ -131,7 +164,10 @@ async def step_participant_name(message: Message, session: AsyncSession, state: 
     await session.refresh(participant)
     await state.update_data(participant_id=participant.id)
     await state.set_state(GuidedFlow.exercise_name)
-    await message.answer(f"✅ Участник «{participant.full_name}» добавлен.\n\n📁 Введите название упражнения:")
+    await message.answer(
+        f"✅ Участник «{participant.full_name}» добавлен.\n\n📁 Введите название упражнения:",
+        reply_markup=_menu_keyboard(),
+    )
 
 
 @router.message(GuidedFlow.exercise_name, F.text)
@@ -152,7 +188,10 @@ async def step_exercise_name(message: Message, session: AsyncSession, state: FSM
     await session.refresh(exercise)
     await state.update_data(exercise_id=exercise.id)
     await state.set_state(GuidedFlow.awaiting_audio)
-    await message.answer(f"✅ Упражнение «{exercise.name}» создано.\n\n🎙 Отправьте аудиозапись этого упражнения:")
+    await message.answer(
+        f"✅ Упражнение «{exercise.name}» создано.\n\n🎙 Отправьте аудиозапись этого упражнения:",
+        reply_markup=_menu_keyboard(),
+    )
 
 
 # ---- audio step ----------------------------------------------------------------------------
@@ -194,12 +233,16 @@ async def step_audio(message: Message, session: AsyncSession, state: FSMContext)
 
     if mode == "transcribe":
         await state.clear()
-        await message.answer(f"Задача #{job.id}: расшифровываю запись, пришлю результат.")
+        await message.answer(
+            f"Задача #{job.id}: расшифровываю запись, пришлю результат.",
+            reply_markup=_menu_keyboard(),
+        )
     else:
         await state.set_state(GuidedFlow.awaiting_notebook)
         await message.answer(
             f"Задача #{job.id}: расшифровываю запись и размечаю роли. "
-            "Когда пришлю «готово» — отправьте блокнот наблюдателя по этому упражнению (.xlsx) 📊"
+            "Когда пришлю «готово» — отправьте блокнот наблюдателя по этому упражнению (.xlsx) 📊",
+            reply_markup=_menu_keyboard(),
         )
 
 
@@ -217,15 +260,18 @@ async def step_notebook(message: Message, bot: Bot, session: AsyncSession, state
     exercise_id = int(data["exercise_id"]) if data.get("exercise_id") else None
     exercise = await session.get(Exercise, exercise_id) if exercise_id else None
     if exercise is None:
-        await message.answer("Не нашёл активное упражнение. Начните заново: /start")
         await state.clear()
+        await message.answer("Не нашёл активное упражнение. Начните заново.", reply_markup=_menu_keyboard())
         return
 
     record = await session.scalar(
         select(InterviewRecord).where(InterviewRecord.exercise_id == exercise.id).order_by(InterviewRecord.id.desc())
     )
     if record is None:
-        await message.answer("⏳ Ещё расшифровываю аудио. Подождите сообщение «готово» и отправьте блокнот снова.")
+        await message.answer(
+            "⏳ Ещё расшифровываю аудио. Подождите сообщение «готово» и отправьте блокнот снова.",
+            reply_markup=_menu_keyboard(),
+        )
         return
 
     await message.answer("Получил блокнот наблюдателя. Сохраняю и обрабатываю...")
@@ -233,11 +279,18 @@ async def step_notebook(message: Message, bot: Bot, session: AsyncSession, state
         local_path = await _download_notebook(bot, message)
         extract_notebook_indicators(local_path)
     except NotebookProcessingError as exc:
-        await message.answer(f"Не удалось прочитать блокнот: {escape(str(exc), quote=False)}")
+        await message.answer(
+            f"Не удалось прочитать блокнот: {escape(str(exc), quote=False)}\n"
+            "Проверьте файл и отправьте .xlsx ещё раз.",
+            reply_markup=_menu_keyboard(),
+        )
         return
     except Exception:
         logger.exception("Guided notebook upload failed")
-        await message.answer("Ошибка при загрузке блокнота. Проверьте, что это .xlsx.")
+        await message.answer(
+            "Ошибка при загрузке блокнота (возможно, связь с Telegram). Отправьте файл .xlsx ещё раз.",
+            reply_markup=_menu_keyboard(),
+        )
         return
 
     notebook = ObserverNotebook(
@@ -255,11 +308,7 @@ async def step_notebook(message: Message, bot: Bot, session: AsyncSession, state
     ok = await run_exercise_processing(message, session, exercise)
     await state.set_state(None)
     if not ok:
-        await message.answer(
-            "Не удалось обработать упражнение. Можно попробовать отправить блокнот ещё раз "
-            "или продолжить:",
-            reply_markup=_next_step_keyboard(),
-        )
+        await message.answer("Не удалось обработать упражнение.", reply_markup=_retry_keyboard())
         return
     await message.answer(
         "✅ Упражнение обработано.\n\n"
@@ -313,3 +362,50 @@ async def cb_make_ipr(callback: CallbackQuery, session: AsyncSession) -> None:
         return
     await callback.answer("Готовлю ИПР...")
     await generate_ipr_document(callback.message, session, participant)
+    await callback.message.answer("Готово.", reply_markup=_menu_keyboard())
+
+
+@router.callback_query(F.data == "guided:home")
+async def cb_home(callback: CallbackQuery, state: FSMContext) -> None:
+    if callback.message is None:
+        return
+    await state.clear()
+    await callback.answer()
+    await callback.message.answer("🏠 Главное меню. Что сделать?", reply_markup=welcome_keyboard())
+
+
+@router.callback_query(F.data == "guided:retry")
+async def cb_retry(callback: CallbackQuery, session: AsyncSession, state: FSMContext) -> None:
+    if callback.message is None:
+        return
+    data = await state.get_data()
+    exercise_id = int(data["exercise_id"]) if data.get("exercise_id") else None
+    exercise = await session.get(Exercise, exercise_id) if exercise_id else None
+    if exercise is None:
+        await callback.answer()
+        await callback.message.answer("Повторять нечего. Вернёмся в меню.", reply_markup=welcome_keyboard())
+        return
+    await callback.answer("Повторяю обработку...")
+    ok = await run_exercise_processing(callback.message, session, exercise)
+    if ok:
+        await callback.message.answer("✅ Готово. Что дальше?", reply_markup=_next_step_keyboard())
+    else:
+        await callback.message.answer("Снова не вышло.", reply_markup=_retry_keyboard())
+
+
+async def on_guided_error(event: ErrorEvent) -> bool:
+    """Last-resort safety net: on any unhandled error, give the user a way forward."""
+    logger.exception("Guided flow error: %s", event.exception)
+    update = event.update
+    target: Message | None = update.message
+    if target is None and update.callback_query is not None:
+        target = update.callback_query.message
+    if target is not None:
+        try:
+            await target.answer(
+                "⚠️ Что-то пошло не так. Можно попробовать ещё раз или вернуться в меню.",
+                reply_markup=_retry_keyboard(),
+            )
+        except Exception:
+            logger.exception("Failed to send error fallback message")
+    return True

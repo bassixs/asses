@@ -59,6 +59,7 @@ async def main() -> None:
     dispatcher.include_router(workflow.router)
     dispatcher.include_router(notebook.router)
     dispatcher.include_router(media.router)
+    dispatcher.errors.register(guided.on_guided_error)
 
     await bot.delete_webhook(drop_pending_updates=settings.telegram_drop_pending_updates_on_start)
     logging.getLogger(__name__).info("Bot started")
