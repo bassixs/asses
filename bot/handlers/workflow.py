@@ -28,7 +28,6 @@ from bot.models import (
 )
 from bot.services.development_advice import enrich_competencies_with_advice
 from bot.services.llm_json import LLMJSONError
-from bot.services.pdf_export import convert_to_pdf
 from bot.services.observer_notebook import (
     NotebookProcessingError,
     analyze_notebook_indicators,
@@ -432,9 +431,8 @@ async def callback_report_format(callback: CallbackQuery, session: AsyncSession)
         return
 
     await callback.answer(f"Готовлю {fmt.upper()}...")
-    base_fmt = "docx" if fmt == "docx" else "pptx"
     try:
-        base_path = await asyncio.to_thread(_render_report_base, participant_id, base_fmt, report.result_json)
+        document = await asyncio.to_thread(_render_report_base, participant_id, fmt, report.result_json)
     except ReportFormatUnavailable as exc:
         await callback.message.answer(str(exc))
         return
@@ -442,13 +440,6 @@ async def callback_report_format(callback: CallbackQuery, session: AsyncSession)
         logging.getLogger(__name__).exception("Report rendering failed for participant_id=%s fmt=%s", participant_id, fmt)
         await callback.message.answer("Не удалось сформировать файл отчёта.")
         return
-
-    document = base_path
-    if fmt == "pdf":
-        document = await convert_to_pdf(base_path)
-        if document is None:
-            await callback.message.answer("Не удалось конвертировать отчёт в PDF (проверьте LibreOffice на сервере).")
-            return
 
     await callback.message.answer_document(
         FSInputFile(document),
@@ -532,7 +523,10 @@ async def generate_ipr_document(message: Message, session: AsyncSession, partici
     )
     session.add(plan)
     await session.commit()
-    await _send_docx_with_pdf(message, output_path, caption=f"ИПР участника «{participant.full_name}» сформирован.")
+    await message.answer_document(
+        FSInputFile(output_path),
+        caption=f"ИПР участника «{participant.full_name}» сформирован.",
+    )
     return True
 
 
@@ -544,17 +538,6 @@ def _load_segments(raw: str | None) -> list[dict[str, Any]]:
     except (TypeError, ValueError):
         return []
     return data if isinstance(data, list) else []
-
-
-async def _send_docx_with_pdf(message: Message, docx_path: Path, *, caption: str) -> None:
-    await message.answer_document(FSInputFile(docx_path), caption=caption)
-    try:
-        pdf_path = await convert_to_pdf(docx_path)
-    except Exception:  # noqa: BLE001 - PDF is a bonus, never block the docx delivery
-        logging.getLogger(__name__).exception("PDF conversion crashed for %s", docx_path)
-        pdf_path = None
-    if pdf_path is not None:
-        await message.answer_document(FSInputFile(pdf_path), caption="PDF-версия")
 
 
 def _command_arg(message: Message) -> str:

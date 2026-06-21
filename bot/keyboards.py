@@ -39,7 +39,6 @@ def report_format_keyboard(participant_id: int) -> InlineKeyboardMarkup:
             [
                 InlineKeyboardButton(text="PPTX", callback_data=f"report_format:{participant_id}:pptx"),
                 InlineKeyboardButton(text="DOCX", callback_data=f"report_format:{participant_id}:docx"),
-                InlineKeyboardButton(text="PDF", callback_data=f"report_format:{participant_id}:pdf"),
             ],
         ]
     )
