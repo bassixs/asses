@@ -5,6 +5,7 @@ import logging
 from pathlib import Path
 
 from aiogram import Bot, F, Router
+from aiogram.exceptions import TelegramNetworkError
 from aiogram.fsm.context import FSMContext
 from aiogram.fsm.state import State, StatesGroup
 from aiogram.types import (
@@ -385,6 +386,26 @@ async def cb_retry(callback: CallbackQuery, session: AsyncSession, state: FSMCon
         await callback.answer()
         await callback.message.answer("Повторять нечего. Вернёмся в меню.", reply_markup=welcome_keyboard())
         return
+
+    record = await session.scalar(
+        select(InterviewRecord).where(InterviewRecord.exercise_id == exercise.id).order_by(InterviewRecord.id.desc())
+    )
+    notebook = await session.scalar(
+        select(ObserverNotebook).where(ObserverNotebook.exercise_id == exercise.id).order_by(ObserverNotebook.id.desc())
+    )
+    if record is None:
+        await callback.answer()
+        await callback.message.answer("⏳ Ещё расшифровываю аудио. Дождитесь сообщения «готово».", reply_markup=_menu_keyboard())
+        return
+    if notebook is None:
+        await state.set_state(GuidedFlow.awaiting_notebook)
+        await callback.answer()
+        await callback.message.answer(
+            "Отправьте блокнот наблюдателя по этому упражнению (.xlsx) 📊",
+            reply_markup=_menu_keyboard(),
+        )
+        return
+
     await callback.answer("Повторяю обработку...")
     ok = await run_exercise_processing(callback.message, session, exercise)
     if ok:
@@ -400,12 +421,20 @@ async def on_guided_error(event: ErrorEvent) -> bool:
     target: Message | None = update.message
     if target is None and update.callback_query is not None:
         target = update.callback_query.message
-    if target is not None:
-        try:
-            await target.answer(
-                "⚠️ Что-то пошло не так. Можно попробовать ещё раз или вернуться в меню.",
-                reply_markup=_retry_keyboard(),
-            )
-        except Exception:
-            logger.exception("Failed to send error fallback message")
+    if target is None:
+        return True
+
+    if isinstance(event.exception, TelegramNetworkError):
+        text = (
+            "⏳ Связь с Telegram сейчас подвисает — операция может занять чуть больше времени "
+            "или повториться сама. Если файл не пришёл, попробуйте действие ещё раз чуть позже."
+        )
+        keyboard = _menu_keyboard()
+    else:
+        text = "⚠️ Что-то пошло не так. Можно попробовать ещё раз или вернуться в меню."
+        keyboard = _retry_keyboard()
+    try:
+        await target.answer(text, reply_markup=keyboard)
+    except Exception:
+        logger.exception("Failed to send error fallback message")
     return True
