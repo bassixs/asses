@@ -6,7 +6,7 @@ from pathlib import Path
 
 from aiogram import F, Router
 from aiogram.filters import Command
-from aiogram.types import CallbackQuery, FSInputFile, Message
+from aiogram.types import CallbackQuery, Message
 from sqlalchemy import desc, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -18,6 +18,7 @@ from bot.services.telegram_files import (
     SUPPORTED_AUDIO_DOCUMENT_EXTENSIONS,
     extract_media_meta,
     format_size,
+    send_document_with_retry,
 )
 from bot.services.transcript_export import build_transcript_text_file
 
@@ -112,8 +113,10 @@ async def callback_transcript_file(callback: CallbackQuery, session: AsyncSessio
         return
 
     await callback.answer("Отправляю файл")
-    await callback.message.answer_document(
-        FSInputFile(path, filename=path.name),
+    await send_document_with_retry(
+        callback.message.bot,
+        callback.message.chat.id,
+        path,
         caption=f"Расшифровка записи #{record.id}",
     )
 
@@ -196,7 +199,9 @@ async def cmd_rebuild_transcript(message: Message, session: AsyncSession) -> Non
     record.transcript_file_path = str(transcript_path)
     await session.commit()
 
-    await message.answer_document(
-        FSInputFile(transcript_path, filename=transcript_path.name),
+    await send_document_with_retry(
+        message.bot,
+        message.chat.id,
+        transcript_path,
         caption=f"Обновлённая расшифровка записи #{record.id}",
     )

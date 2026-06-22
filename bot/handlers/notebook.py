@@ -9,21 +9,22 @@ from typing import Any
 
 from aiogram import Bot, F, Router
 from aiogram.filters import Command
-from aiogram.types import FSInputFile, Message
+from aiogram.types import Message
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from bot.config import settings
 from bot.database import async_session_maker
-from bot.models import InterviewRecord, NotebookFillResult, ObserverNotebook
+from bot.models import Exercise, InterviewRecord, NotebookFillResult, ObserverNotebook
 from bot.services.observer_notebook import (
     NotebookProcessingError,
     analyze_notebook_indicators,
     attach_evidence_timestamps,
     extract_notebook_indicators,
     fill_observer_notebook,
+    verify_evidence_quotes,
 )
-from bot.services.telegram_files import download_telegram_file
+from bot.services.telegram_files import download_telegram_file, send_document_with_retry
 
 logger = logging.getLogger(__name__)
 router = Router()
@@ -176,7 +177,20 @@ async def _fill_notebook_and_send(
         try:
             input_path = Path(notebook.file_path)
             indicators = extract_notebook_indicators(input_path)
-            report = await analyze_notebook_indicators(transcript=record.transcript, indicators=indicators)
+            exercise_name = None
+            exercise_instructions = None
+            if record.exercise_id is not None:
+                exercise = await session.scalar(select(Exercise).where(Exercise.id == record.exercise_id))
+                if exercise is not None:
+                    exercise_name = exercise.name
+                    exercise_instructions = exercise.instructions_text
+            report = await analyze_notebook_indicators(
+                transcript=record.transcript,
+                indicators=indicators,
+                exercise_name=exercise_name,
+                exercise_instructions=exercise_instructions,
+            )
+            verify_evidence_quotes(report, record.transcript)
             attach_evidence_timestamps(report, _load_segments(record.transcript_segments))
             output_path = settings.download_dir.parent / "reports" / f"filled_record_{record.id}_notebook_{notebook.id}.xlsx"
             result_json = fill_observer_notebook(
@@ -206,9 +220,10 @@ async def _fill_notebook_and_send(
         session.add(fill_result)
         await session.commit()
 
-        await bot.send_document(
+        await send_document_with_retry(
+            bot,
             chat_id,
-            FSInputFile(output_path),
+            output_path,
             caption=_format_fill_summary(record.id, notebook.id, result_json),
         )
 

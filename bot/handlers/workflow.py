@@ -10,7 +10,7 @@ from typing import Any
 
 from aiogram import Bot, F, Router
 from aiogram.filters import Command
-from aiogram.types import CallbackQuery, FSInputFile, Message
+from aiogram.types import CallbackQuery, Message
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -34,7 +34,9 @@ from bot.services.observer_notebook import (
     attach_evidence_timestamps,
     extract_notebook_indicators,
     fill_observer_notebook,
+    verify_evidence_quotes,
 )
+from bot.services.telegram_files import send_document_with_retry
 from bot.services.reports import (
     build_development_plan_text,
     build_participant_report_text,
@@ -301,11 +303,17 @@ async def run_exercise_processing(message: Message, session: AsyncSession, exerc
     input_path = Path(notebook.file_path)
     indicators = extract_notebook_indicators(input_path)
     try:
-        report = await analyze_notebook_indicators(transcript=record.transcript, indicators=indicators)
+        report = await analyze_notebook_indicators(
+            transcript=record.transcript,
+            indicators=indicators,
+            exercise_name=exercise.name,
+            exercise_instructions=exercise.instructions_text,
+        )
     except (NotebookProcessingError, LLMJSONError) as exc:
         logging.getLogger(__name__).exception("process_exercise analysis failed for exercise_id=%s", exercise.id)
         await message.answer(f"Не удалось обработать упражнение #{exercise.id}: {escape(str(exc), quote=False)}")
         return False
+    verify_evidence_quotes(report, record.transcript)
     attach_evidence_timestamps(report, _load_segments(record.transcript_segments))
     output_path = settings.download_dir.parent / "reports" / f"exercise_{exercise.id}_filled.xlsx"
     result_json = fill_observer_notebook(
@@ -325,7 +333,12 @@ async def run_exercise_processing(message: Message, session: AsyncSession, exerc
     )
     session.add(fill_result)
     await session.commit()
-    await message.answer_document(FSInputFile(output_path), caption=f"Готово: упражнение «{exercise.name}» обработано.")
+    await send_document_with_retry(
+        message.bot,
+        message.chat.id,
+        output_path,
+        caption=f"Готово: упражнение «{exercise.name}» обработано.",
+    )
     return True
 
 
@@ -441,8 +454,10 @@ async def callback_report_format(callback: CallbackQuery, session: AsyncSession)
         await callback.message.answer("Не удалось сформировать файл отчёта.")
         return
 
-    await callback.message.answer_document(
-        FSInputFile(document),
+    await send_document_with_retry(
+        callback.message.bot,
+        callback.message.chat.id,
+        document,
         caption=f"Отчёт участника #{participant_id} ({fmt.upper()}).",
     )
 
@@ -523,8 +538,10 @@ async def generate_ipr_document(message: Message, session: AsyncSession, partici
     )
     session.add(plan)
     await session.commit()
-    await message.answer_document(
-        FSInputFile(output_path),
+    await send_document_with_retry(
+        message.bot,
+        message.chat.id,
+        output_path,
         caption=f"ИПР участника «{participant.full_name}» сформирован.",
     )
     return True

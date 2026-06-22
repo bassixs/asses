@@ -125,8 +125,10 @@ async def _process_job(bot: Bot, job_id: int) -> None:
         await bot.send_message(job.chat_id, f"Задача #{job.id}: отправляю аудио на расшифровку через {provider_name}...")
         raw_transcript, segments = await _transcribe_with_provider(bot, job, local_path, job.stt_provider)
 
-        participant_name, exercise_name = await _exercise_context(job.exercise_id)
-        transcript = await _label_roles_or_keep_raw(bot, job, raw_transcript, participant_name, exercise_name)
+        participant_name, exercise_name, exercise_instructions = await _exercise_context(job.exercise_id)
+        transcript = await _label_roles_or_keep_raw(
+            bot, job, raw_transcript, participant_name, exercise_name, exercise_instructions
+        )
 
         record_id = await _create_record(job, local_path, raw_transcript, transcript, segments)
         transcript_path = await build_transcript_text_file(transcript=transcript, record_id=record_id)
@@ -169,15 +171,21 @@ async def _process_job(bot: Bot, job_id: int) -> None:
         await bot.send_message(job.chat_id, f"Задача #{job.id}: произошла ошибка при обработке файла.")
 
 
-async def _exercise_context(exercise_id: int | None) -> tuple[str | None, str | None]:
+async def _exercise_context(
+    exercise_id: int | None,
+) -> tuple[str | None, str | None, str | None]:
     if exercise_id is None:
-        return None, None
+        return None, None, None
     async with async_session_maker() as session:
         exercise = await session.get(Exercise, exercise_id)
         if exercise is None:
-            return None, None
+            return None, None, None
         participant = await session.get(Participant, exercise.participant_id)
-        return (participant.full_name if participant else None), exercise.name
+        return (
+            participant.full_name if participant else None,
+            exercise.name,
+            exercise.instructions_text,
+        )
 
 
 async def _create_record(
@@ -298,6 +306,7 @@ async def _label_roles_or_keep_raw(
     transcript: str,
     assessed_participant_name: str | None = None,
     exercise_name: str | None = None,
+    exercise_instructions: str | None = None,
 ) -> str:
     if not settings.role_labeling_enabled:
         return transcript
@@ -308,6 +317,7 @@ async def _label_roles_or_keep_raw(
             transcript,
             assessed_participant_name=assessed_participant_name,
             exercise_name=exercise_name,
+            exercise_instructions=exercise_instructions,
         )
     except RoleLabelingError as exc:
         logger.exception("Role labeling failed for media job id=%s", job.id)

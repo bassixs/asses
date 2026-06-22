@@ -15,6 +15,7 @@ from pydantic import BaseModel, Field, ValidationError, field_validator
 
 from bot.config import settings
 from bot.services.llm_json import LLMJSONError, complete_json_openai_compatible
+from bot.services.exercise_context import build_exercise_analysis_block
 from bot.services.role_labeling import extract_participant_transcript
 from bot.services.yandex_gpt import complete_json
 
@@ -123,9 +124,15 @@ async def analyze_notebook_indicators(
     *,
     transcript: str,
     indicators: list[IndicatorRow],
+    exercise_name: str | None = None,
+    exercise_instructions: str | None = None,
 ) -> NotebookAnalysisReport:
     system_prompt = _build_notebook_system_prompt()
     participant_transcript = extract_participant_transcript(transcript)
+    exercise_context = build_exercise_analysis_block(exercise_name, exercise_instructions)
+    if exercise_context:
+        source = "uploaded instructions" if exercise_instructions else "bundled library"
+        logger.info("Notebook analysis using exercise context for '%s' (%s)", exercise_name, source)
 
     batch_size = max(1, settings.notebook_analysis_batch_size)
     batches = [indicators[i : i + batch_size] for i in range(0, len(indicators), batch_size)]
@@ -141,6 +148,7 @@ async def analyze_notebook_indicators(
                     indicators=batch,
                     batch_index=batch_index,
                     batch_count=len(batches),
+                    exercise_context=exercise_context,
                 )
             except (LLMJSONError, NotebookProcessingError) as exc:
                 # One bad batch should not fail the whole exercise; its indicators are
@@ -188,6 +196,7 @@ async def _analyze_indicator_batch(
     indicators: list[IndicatorRow],
     batch_index: int,
     batch_count: int,
+    exercise_context: str = "",
 ) -> NotebookAnalysisReport:
     payload = [
         {
@@ -197,7 +206,11 @@ async def _analyze_indicator_batch(
         }
         for item in indicators
     ]
-    user_prompt = _build_notebook_user_prompt(transcript=transcript, indicators=payload)
+    user_prompt = _build_notebook_user_prompt(
+        transcript=transcript,
+        indicators=payload,
+        exercise_context=exercise_context,
+    )
     logger.info("Notebook analysis batch %s/%s: indicators=%s", batch_index, batch_count, len(indicators))
 
     if settings.analysis_llm_provider.lower().strip() == "yandex":
@@ -337,11 +350,21 @@ def _coerce_indicator(item: Any) -> IndicatorAnalysis | None:
     )
 
 
+_ROLE_PREFIX_RE = re.compile(r"^\s*(?:участник|ведущий|наблюдатель)\s*:\s*", re.IGNORECASE)
+
+
+def _clean_quote(text: str) -> str:
+    """Strip a leading role label ("Участник:"/"Ведущий:") the LLM sometimes glues
+    onto the quote. It is not part of the speech, and it breaks timestamp matching."""
+    cleaned = _ROLE_PREFIX_RE.sub("", text or "").strip()
+    return cleaned.strip("«»\"' ").strip()
+
+
 def _coerce_evidence(value: Any) -> list[IndicatorEvidence]:
     if not value:
         return []
     if isinstance(value, str):
-        text = value.strip()
+        text = _clean_quote(value)
         return [IndicatorEvidence(quote=text)] if text else []
     if isinstance(value, dict):
         value = [value]
@@ -350,11 +373,11 @@ def _coerce_evidence(value: Any) -> list[IndicatorEvidence]:
     out: list[IndicatorEvidence] = []
     for entry in value:
         if isinstance(entry, str):
-            text = entry.strip()
+            text = _clean_quote(entry)
             if text:
                 out.append(IndicatorEvidence(quote=text))
         elif isinstance(entry, dict):
-            quote = _as_text(entry.get("quote") or entry.get("text"))
+            quote = _clean_quote(_as_text(entry.get("quote") or entry.get("text")))
             if quote:
                 timestamp = _as_text(entry.get("timestamp")) or None
                 out.append(IndicatorEvidence(quote=quote, timestamp=timestamp))
@@ -423,17 +446,25 @@ def _build_notebook_system_prompt() -> str:
    "+" — есть хотя бы одна релевантная цитата участника;
    "-" — индикатор мог наблюдаться в упражнении, но проявления участника нет;
    "НЗ" — индикатор объективно не мог наблюдаться в этом упражнении.
-5. Каждый "+" должен иметь точную цитату. Если в транскрипте есть таймкод, верни его.
+5. Каждый "+" должен иметь точную цитату. Цитата — это ДОСЛОВНЫЕ слова участника из транскрипта (слово в слово). Если в транскрипте есть таймкод, верни его.
+   ЗАПРЕЩЕНО брать в качестве цитаты примеры из формулировки самого индикатора (текст в скобках или кавычках внутри описания индикатора) — это НЕ речь участника, а пояснение для наблюдателя. Если дословной цитаты участника в транскрипте нет — ставь "-", а не "+".
 6. Для "-" evidence должен быть пустым.
 7. Для "НЗ" evidence должен быть пустым, а observable_reason должен объяснять, почему ситуация не позволяла замерить индикатор.
 8. Не придумывай цитаты, таймкоды, действия и роли.
-9. Возвращай только валидный JSON по схеме.
+9. Если дан "Контекст упражнения", опирайся на него, решая, мог ли индикатор наблюдаться: если упражнение по сценарию не создаёт ситуацию для индикатора — ставь "НЗ", а не "-".
+10. Возвращай только валидный JSON по схеме.
 """.strip()
 
 
-def _build_notebook_user_prompt(*, transcript: str, indicators: list[dict[str, str]]) -> str:
+def _build_notebook_user_prompt(
+    *,
+    transcript: str,
+    indicators: list[dict[str, str]],
+    exercise_context: str = "",
+) -> str:
+    context_block = f"{exercise_context}\n\n" if exercise_context else ""
     return f"""
-Транскрипт упражнения:
+{context_block}Транскрипт упражнения:
 {transcript}
 
 Поведенческие индикаторы из блокнота наблюдателя:
@@ -551,6 +582,65 @@ def _level_from_percent(percent: float) -> float:
 
 
 _TS_WORD_RE = re.compile(r"\w+", re.UNICODE)
+
+
+def verify_evidence_quotes(report: NotebookAnalysisReport, transcript: str) -> None:
+    """Drop "+" evidence whose quote is not actually present in the transcript.
+
+    The analysis LLM sometimes lifts the example phrasing from the indicator's own
+    description (text in parentheses) and passes it off as a participant quote. Such
+    quotes do not appear verbatim in the recording, so we verify each "+" quote against
+    the transcript word stream and drop fabricated ones. If a "+" loses all evidence,
+    it is downgraded to "-" (no comment), which keeps the level math honest per ТЗ.
+    """
+    stream = [w.lower() for w in _TS_WORD_RE.findall(transcript or "")]
+    if not stream:
+        logger.info("Evidence verification skipped: empty transcript")
+        return
+
+    dropped = 0
+    downgraded = 0
+    for result in report.results:
+        if result.status != "+":
+            continue
+        kept = [item for item in result.evidence if _quote_in_transcript(item.quote, stream)]
+        dropped += len(result.evidence) - len(kept)
+        if kept:
+            result.evidence = kept
+            continue
+        # No verifiable quote left — this "+" was based on a fabricated/paraphrased quote.
+        result.status = "-"
+        result.evidence = []
+        result.comment = ""
+        downgraded += 1
+    logger.info("Evidence verification: dropped=%s fabricated quotes, downgraded=%s '+'→'-'", dropped, downgraded)
+
+
+def _quote_in_transcript(quote: str, stream: list[str]) -> bool:
+    needle = [w.lower() for w in _TS_WORD_RE.findall(quote)]
+    if not needle:
+        return False
+    run = _longest_word_run(needle, stream)
+    if len(needle) <= 3:
+        # Very short quote: require the whole thing to appear (min 2 words).
+        return run >= max(2, len(needle))
+    if len(needle) <= 5:
+        return run >= 3
+    # Longer quotes: a genuine transcript quote has at least a 4-word verbatim span.
+    return run >= 4
+
+
+def _longest_word_run(needle: list[str], stream: list[str]) -> int:
+    best = 0
+    for i in range(len(stream)):
+        run = 0
+        while run < len(needle) and i + run < len(stream) and stream[i + run] == needle[run]:
+            run += 1
+        if run > best:
+            best = run
+            if best == len(needle):
+                break
+    return best
 
 
 def attach_evidence_timestamps(report: NotebookAnalysisReport, segments: list[dict[str, Any]]) -> None:
