@@ -177,7 +177,32 @@ async def step_center_name(message: Message, session: AsyncSession, state: FSMCo
     await state.update_data(center_id=center.id)
     await state.set_state(GuidedFlow.participant_name)
     await message.answer(
-        f"✅ Центр «{center.name}» создан.\n\n👤 Введите ФИО участника:",
+        f"✅ Центр «{center.name}» создан.\n\n{_PARTICIPANT_PROMPT}",
+        reply_markup=_participant_keyboard(),
+    )
+
+
+_PARTICIPANT_PROMPT = (
+    "🔢 Введите код или номер участника — без ФИО и личных данных "
+    "(например, его код из вашей системы).\n\n"
+    "Или нажмите «Присвоить автоматически» — бот сам выдаст номер."
+)
+
+
+def _participant_keyboard() -> InlineKeyboardMarkup:
+    return InlineKeyboardMarkup(
+        inline_keyboard=[
+            [InlineKeyboardButton(text="🔢 Присвоить автоматически", callback_data="guided:auto_participant")],
+            _MENU_ROW,
+        ]
+    )
+
+
+async def _finish_participant(message: Message, state: FSMContext, participant: Participant) -> None:
+    await state.update_data(participant_id=participant.id)
+    await state.set_state(GuidedFlow.exercise_name)
+    await message.answer(
+        f"✅ Участник {participant.full_name} добавлен.\n\n📁 Введите название упражнения:",
         reply_markup=_menu_keyboard(),
     )
 
@@ -185,7 +210,10 @@ async def step_center_name(message: Message, session: AsyncSession, state: FSMCo
 @router.message(GuidedFlow.participant_name, F.text)
 async def step_participant_name(message: Message, session: AsyncSession, state: FSMContext) -> None:
     if message.from_user is None or not (message.text or "").strip():
-        await message.answer("Введите ФИО участника текстом.")
+        await message.answer(
+            "Введите код участника текстом или нажмите «Присвоить автоматически».",
+            reply_markup=_participant_keyboard(),
+        )
         return
     data = await state.get_data()
     participant = Participant(
@@ -197,12 +225,31 @@ async def step_participant_name(message: Message, session: AsyncSession, state: 
     session.add(participant)
     await session.commit()
     await session.refresh(participant)
-    await state.update_data(participant_id=participant.id)
-    await state.set_state(GuidedFlow.exercise_name)
-    await message.answer(
-        f"✅ Участник «{participant.full_name}» добавлен.\n\n📁 Введите название упражнения:",
-        reply_markup=_menu_keyboard(),
+    await _finish_participant(message, state, participant)
+
+
+@router.callback_query(GuidedFlow.participant_name, F.data == "guided:auto_participant")
+async def cb_auto_participant(callback: CallbackQuery, session: AsyncSession, state: FSMContext) -> None:
+    if callback.message is None or callback.from_user is None:
+        return
+    data = await state.get_data()
+    if not data.get("center_id"):
+        await callback.answer("Сессия не найдена, начните с /start", show_alert=True)
+        return
+    participant = Participant(
+        center_id=int(data["center_id"]),
+        chat_id=callback.message.chat.id,
+        user_id=callback.from_user.id,
+        full_name="",
     )
+    session.add(participant)
+    await session.commit()
+    await session.refresh(participant)
+    # The auto code is the unique DB id, assigned after insert.
+    participant.full_name = f"№{participant.id}"
+    await session.commit()
+    await callback.answer()
+    await _finish_participant(callback.message, state, participant)
 
 
 @router.message(GuidedFlow.exercise_name, F.text)

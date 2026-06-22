@@ -73,7 +73,7 @@ async def cmd_add_participant(message: Message, session: AsyncSession) -> None:
         return
     parsed = _parse_id_and_text(message)
     if parsed is None:
-        await message.answer("Формат: /add_participant <center_id> Иван Петров")
+        await message.answer("Формат: /add_participant <center_id> <код участника без ФИО>")
         return
     center_id, full_name = parsed
     center = await _load_center(session, center_id, message.from_user.id)
