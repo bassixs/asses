@@ -5,9 +5,11 @@ import logging
 import re
 from pathlib import Path
 
+from typing import Any
+
 from aiogram import Bot
 from aiogram.exceptions import TelegramBadRequest, TelegramNetworkError
-from aiogram.types import File, Message
+from aiogram.types import File, FSInputFile, Message
 
 from bot.config import settings
 
@@ -83,6 +85,47 @@ async def download_telegram_path_with_retry(bot: Bot, file_path: str, destinatio
                 break
             logger.warning(
                 "Telegram download_file failed, retrying attempt=%s/%s: %s",
+                attempt,
+                settings.telegram_file_download_attempts,
+                exc,
+            )
+            await asyncio.sleep(settings.telegram_file_download_retry_delay_seconds)
+    assert last_error is not None
+    raise last_error
+
+
+async def send_document_with_retry(
+    bot: Bot,
+    chat_id: int,
+    path: Path,
+    *,
+    caption: str | None = None,
+    reply_markup: Any = None,
+    filename: str | None = None,
+) -> None:
+    """Send a document with retries and a generous timeout.
+
+    The local Telegram Bot API server can stall on large files, so document sends
+    (filled notebook, report, IPR, transcript) get the same retry treatment as
+    downloads instead of failing the user's flow on a single network hiccup.
+    """
+    last_error: TelegramNetworkError | None = None
+    for attempt in range(1, settings.telegram_file_download_attempts + 1):
+        try:
+            await bot.send_document(
+                chat_id,
+                FSInputFile(path, filename=filename or path.name),
+                caption=caption,
+                reply_markup=reply_markup,
+                request_timeout=settings.telegram_file_send_timeout_seconds,
+            )
+            return
+        except TelegramNetworkError as exc:
+            last_error = exc
+            if attempt >= settings.telegram_file_download_attempts:
+                break
+            logger.warning(
+                "Telegram send_document failed, retrying attempt=%s/%s: %s",
                 attempt,
                 settings.telegram_file_download_attempts,
                 exc,

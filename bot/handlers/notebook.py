@@ -9,7 +9,7 @@ from typing import Any
 
 from aiogram import Bot, F, Router
 from aiogram.filters import Command
-from aiogram.types import FSInputFile, Message
+from aiogram.types import Message
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -24,7 +24,7 @@ from bot.services.observer_notebook import (
     fill_observer_notebook,
     verify_evidence_quotes,
 )
-from bot.services.telegram_files import download_telegram_file
+from bot.services.telegram_files import download_telegram_file, send_document_with_retry
 
 logger = logging.getLogger(__name__)
 router = Router()
@@ -220,9 +220,10 @@ async def _fill_notebook_and_send(
         session.add(fill_result)
         await session.commit()
 
-        await bot.send_document(
+        await send_document_with_retry(
+            bot,
             chat_id,
-            FSInputFile(output_path),
+            output_path,
             caption=_format_fill_summary(record.id, notebook.id, result_json),
         )
 

@@ -53,6 +53,13 @@ class Settings(BaseSettings):
         default=15,
         validation_alias="TELEGRAM_FILE_DOWNLOAD_RETRY_DELAY_SECONDS",
     )
+    # Per-attempt timeout for sending result documents (notebook/report/IPR/transcript).
+    # Files are small, so keep this short: a stalled local Bot API fails fast and the
+    # retry opens a fresh connection instead of blocking for the long download timeout.
+    telegram_file_send_timeout_seconds: int = Field(
+        default=180,
+        validation_alias="TELEGRAM_FILE_SEND_TIMEOUT_SECONDS",
+    )
     telegram_api_base_url: str | None = Field(default=None, validation_alias="TELEGRAM_API_BASE_URL")
     telegram_api_is_local: bool = Field(default=False, validation_alias="TELEGRAM_API_IS_LOCAL")
     telegram_drop_pending_updates_on_start: bool = Field(
