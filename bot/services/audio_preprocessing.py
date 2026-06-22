@@ -5,7 +5,12 @@ import logging
 from pathlib import Path
 
 from bot.config import settings
-from bot.services.audio_chunking import AudioChunk, split_audio_into_chunks
+from bot.services.audio_chunking import (
+    AudioChunk,
+    AudioChunkingError,
+    probe_duration_seconds,
+    split_audio_into_chunks,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -72,42 +77,61 @@ async def prepare_audio_chunks_for_upload(
         raise AudioPreprocessingError(f"File not found: {file_path}")
 
     original_size = file_path.stat().st_size
-    if original_size <= max_bytes:
+
+    # Duration guard: a long recording can fit under the size limit yet still exceed the
+    # provider's gateway timeout (AI Tunnel returns HTTP 524). Force time-based chunking then.
+    too_long = False
+    if settings.whisper_chunk_enabled and settings.whisper_chunk_max_seconds > 0:
+        try:
+            duration = await probe_duration_seconds(file_path)
+            too_long = duration > settings.whisper_chunk_max_seconds
+            if too_long:
+                logger.info(
+                    "Audio is %.0fs (> %ss) for %s — splitting by duration regardless of size",
+                    duration,
+                    settings.whisper_chunk_max_seconds,
+                    provider_name,
+                )
+        except AudioChunkingError as exc:
+            logger.warning("Could not probe duration for %s, falling back to size-only logic: %s", file_path, exc)
+
+    if original_size <= max_bytes and not too_long:
         return [(file_path, 0.0)]
 
     bitrates = _parse_bitrates(settings.whisper_compression_bitrates_kbps)
     if not bitrates:
         raise AudioPreprocessingError("No valid Whisper compression bitrates configured")
 
-    logger.info(
-        "Preparing audio for %s: original_size=%s max_bytes=%s bitrates=%s",
-        provider_name,
-        original_size,
-        max_bytes,
-        bitrates,
-    )
-
-    smallest_size = 0
-    for bitrate in bitrates:
-        output_path = _compressed_output_path(file_path, provider_name, bitrate)
-        await _run_ffmpeg(file_path, output_path, bitrate)
-        compressed_size = output_path.stat().st_size if output_path.exists() else 0
+    # A too-long file must be chunked even if it would compress under the size limit.
+    if not too_long:
         logger.info(
-            "Compressed audio for %s: bitrate=%sk size=%s path=%s",
+            "Preparing audio for %s: original_size=%s max_bytes=%s bitrates=%s",
             provider_name,
-            bitrate,
-            compressed_size,
-            output_path,
+            original_size,
+            max_bytes,
+            bitrates,
         )
-        if 0 < compressed_size <= max_bytes:
-            return [(output_path, 0.0)]
-        smallest_size = compressed_size
+        smallest_size = 0
+        for bitrate in bitrates:
+            output_path = _compressed_output_path(file_path, provider_name, bitrate)
+            await _run_ffmpeg(file_path, output_path, bitrate)
+            compressed_size = output_path.stat().st_size if output_path.exists() else 0
+            logger.info(
+                "Compressed audio for %s: bitrate=%sk size=%s path=%s",
+                provider_name,
+                bitrate,
+                compressed_size,
+                output_path,
+            )
+            if 0 < compressed_size <= max_bytes:
+                return [(output_path, 0.0)]
+            smallest_size = compressed_size
 
-    if not settings.whisper_chunk_enabled:
-        raise AudioPreprocessingError(
-            f"Audio still {smallest_size} bytes after compression (limit {max_bytes}) "
-            f"for {provider_name} and chunking is disabled",
-        )
+        if not settings.whisper_chunk_enabled:
+            raise AudioPreprocessingError(
+                f"Audio still {smallest_size} bytes after compression (limit {max_bytes}) "
+                f"for {provider_name} and chunking is disabled",
+            )
 
     try:
         chunks: list[AudioChunk] = await split_audio_into_chunks(file_path, max_bytes, provider_name)

@@ -106,6 +106,10 @@ async def split_audio_into_chunks(file_path: Path, max_bytes: int, provider_name
     overlap = max(0, settings.whisper_chunk_overlap_seconds)
 
     chunk_seconds = compute_chunk_seconds(max_bytes, bitrate, settings.whisper_chunk_size_safety)
+    # Cap by duration so each request finishes before the provider's gateway timeout (524),
+    # not just under the size limit.
+    if settings.whisper_chunk_max_seconds > 0:
+        chunk_seconds = min(chunk_seconds, float(settings.whisper_chunk_max_seconds))
     chunk_seconds = max(chunk_seconds, float(settings.whisper_chunk_min_seconds))
     if chunk_seconds <= overlap:
         raise AudioChunkingError(

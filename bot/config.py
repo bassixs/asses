@@ -142,6 +142,10 @@ class Settings(BaseSettings):
     whisper_chunk_overlap_seconds: int = Field(default=15, validation_alias="WHISPER_CHUNK_OVERLAP_SECONDS")
     whisper_chunk_min_seconds: int = Field(default=60, validation_alias="WHISPER_CHUNK_MIN_SECONDS")
     whisper_chunk_size_safety: float = Field(default=0.85, validation_alias="WHISPER_CHUNK_SIZE_SAFETY")
+    # Max audio seconds per Whisper request. A long recording can fit under the size
+    # limit yet still exceed the provider's gateway timeout (AI Tunnel returns HTTP 524),
+    # so we also split by duration. ~10 min keeps each request well under the timeout.
+    whisper_chunk_max_seconds: int = Field(default=600, validation_alias="WHISPER_CHUNK_MAX_SECONDS")
     role_labeling_enabled: bool = Field(default=True, validation_alias="ROLE_LABELING_ENABLED")
     role_labeling_provider: str = Field(default="aitunnel", validation_alias="ROLE_LABELING_PROVIDER")
     role_labeling_model: str = Field(default="gpt-5-mini", validation_alias="ROLE_LABELING_MODEL")
