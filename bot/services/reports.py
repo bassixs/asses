@@ -102,10 +102,13 @@ def save_participant_report_docx(
 
     title = doc.add_paragraph()
     title.alignment = WD_ALIGN_PARAGRAPH.CENTER
-    run = title.add_run("ОТЧЕТ ПО РЕЗУЛЬТАТАМ\nОЦЕНКИ КОМПЕТЕНЦИЙ")
-    run.bold = True
-    run.font.size = Pt(20)
-    run.font.color.rgb = RGBColor(31, 78, 121)
+    for index, line in enumerate(("ОТЧЕТ ПО РЕЗУЛЬТАТАМ", "ОЦЕНКИ КОМПЕТЕНЦИЙ")):
+        run = title.add_run(line)
+        run.bold = True
+        run.font.size = Pt(20)
+        run.font.color.rgb = RGBColor(31, 78, 121)
+        if index == 0:
+            run.add_break()
 
     subtitle = doc.add_paragraph()
     subtitle.alignment = WD_ALIGN_PARAGRAPH.CENTER

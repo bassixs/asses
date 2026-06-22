@@ -22,6 +22,7 @@ from bot.services.observer_notebook import (
     attach_evidence_timestamps,
     extract_notebook_indicators,
     fill_observer_notebook,
+    verify_evidence_quotes,
 )
 from bot.services.telegram_files import download_telegram_file
 
@@ -189,6 +190,7 @@ async def _fill_notebook_and_send(
                 exercise_name=exercise_name,
                 exercise_instructions=exercise_instructions,
             )
+            verify_evidence_quotes(report, record.transcript)
             attach_evidence_timestamps(report, _load_segments(record.transcript_segments))
             output_path = settings.download_dir.parent / "reports" / f"filled_record_{record.id}_notebook_{notebook.id}.xlsx"
             result_json = fill_observer_notebook(

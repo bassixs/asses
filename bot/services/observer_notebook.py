@@ -436,7 +436,8 @@ def _build_notebook_system_prompt() -> str:
    "+" — есть хотя бы одна релевантная цитата участника;
    "-" — индикатор мог наблюдаться в упражнении, но проявления участника нет;
    "НЗ" — индикатор объективно не мог наблюдаться в этом упражнении.
-5. Каждый "+" должен иметь точную цитату. Если в транскрипте есть таймкод, верни его.
+5. Каждый "+" должен иметь точную цитату. Цитата — это ДОСЛОВНЫЕ слова участника из транскрипта (слово в слово). Если в транскрипте есть таймкод, верни его.
+   ЗАПРЕЩЕНО брать в качестве цитаты примеры из формулировки самого индикатора (текст в скобках или кавычках внутри описания индикатора) — это НЕ речь участника, а пояснение для наблюдателя. Если дословной цитаты участника в транскрипте нет — ставь "-", а не "+".
 6. Для "-" evidence должен быть пустым.
 7. Для "НЗ" evidence должен быть пустым, а observable_reason должен объяснять, почему ситуация не позволяла замерить индикатор.
 8. Не придумывай цитаты, таймкоды, действия и роли.
@@ -571,6 +572,65 @@ def _level_from_percent(percent: float) -> float:
 
 
 _TS_WORD_RE = re.compile(r"\w+", re.UNICODE)
+
+
+def verify_evidence_quotes(report: NotebookAnalysisReport, transcript: str) -> None:
+    """Drop "+" evidence whose quote is not actually present in the transcript.
+
+    The analysis LLM sometimes lifts the example phrasing from the indicator's own
+    description (text in parentheses) and passes it off as a participant quote. Such
+    quotes do not appear verbatim in the recording, so we verify each "+" quote against
+    the transcript word stream and drop fabricated ones. If a "+" loses all evidence,
+    it is downgraded to "-" (no comment), which keeps the level math honest per ТЗ.
+    """
+    stream = [w.lower() for w in _TS_WORD_RE.findall(transcript or "")]
+    if not stream:
+        logger.info("Evidence verification skipped: empty transcript")
+        return
+
+    dropped = 0
+    downgraded = 0
+    for result in report.results:
+        if result.status != "+":
+            continue
+        kept = [item for item in result.evidence if _quote_in_transcript(item.quote, stream)]
+        dropped += len(result.evidence) - len(kept)
+        if kept:
+            result.evidence = kept
+            continue
+        # No verifiable quote left — this "+" was based on a fabricated/paraphrased quote.
+        result.status = "-"
+        result.evidence = []
+        result.comment = ""
+        downgraded += 1
+    logger.info("Evidence verification: dropped=%s fabricated quotes, downgraded=%s '+'→'-'", dropped, downgraded)
+
+
+def _quote_in_transcript(quote: str, stream: list[str]) -> bool:
+    needle = [w.lower() for w in _TS_WORD_RE.findall(quote)]
+    if not needle:
+        return False
+    run = _longest_word_run(needle, stream)
+    if len(needle) <= 3:
+        # Very short quote: require the whole thing to appear (min 2 words).
+        return run >= max(2, len(needle))
+    if len(needle) <= 5:
+        return run >= 3
+    # Longer quotes: a genuine transcript quote has at least a 4-word verbatim span.
+    return run >= 4
+
+
+def _longest_word_run(needle: list[str], stream: list[str]) -> int:
+    best = 0
+    for i in range(len(stream)):
+        run = 0
+        while run < len(needle) and i + run < len(stream) and stream[i + run] == needle[run]:
+            run += 1
+        if run > best:
+            best = run
+            if best == len(needle):
+                break
+    return best
 
 
 def attach_evidence_timestamps(report: NotebookAnalysisReport, segments: list[dict[str, Any]]) -> None:

@@ -34,6 +34,7 @@ from bot.services.observer_notebook import (
     attach_evidence_timestamps,
     extract_notebook_indicators,
     fill_observer_notebook,
+    verify_evidence_quotes,
 )
 from bot.services.reports import (
     build_development_plan_text,
@@ -311,6 +312,7 @@ async def run_exercise_processing(message: Message, session: AsyncSession, exerc
         logging.getLogger(__name__).exception("process_exercise analysis failed for exercise_id=%s", exercise.id)
         await message.answer(f"Не удалось обработать упражнение #{exercise.id}: {escape(str(exc), quote=False)}")
         return False
+    verify_evidence_quotes(report, record.transcript)
     attach_evidence_timestamps(report, _load_segments(record.transcript_segments))
     output_path = settings.download_dir.parent / "reports" / f"exercise_{exercise.id}_filled.xlsx"
     result_json = fill_observer_notebook(
