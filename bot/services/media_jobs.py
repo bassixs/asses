@@ -9,6 +9,7 @@ from html import escape
 from pathlib import Path
 
 from aiogram import Bot
+from aiogram.exceptions import TelegramNetworkError
 from sqlalchemy import select
 
 from bot.config import settings
@@ -32,6 +33,30 @@ from bot.services.telegram_files import download_telegram_file
 from bot.services.transcript_export import build_transcript_text_file
 
 logger = logging.getLogger(__name__)
+
+
+async def _notify(bot: Bot, chat_id: int, text: str, *, reply_markup=None) -> None:
+    """Send a progress/result message without letting a transient Bot API stall abort the job.
+
+    The local Telegram Bot API server periodically stalls, so a plain send_message can raise
+    TelegramNetworkError. The transcript record is saved independently, so a lost notification
+    must never fail the whole transcription job — retry a few times, then give up quietly.
+    """
+    for attempt in range(1, settings.telegram_file_download_attempts + 1):
+        try:
+            await bot.send_message(
+                chat_id,
+                text,
+                reply_markup=reply_markup,
+                request_timeout=settings.telegram_file_send_timeout_seconds,
+            )
+            return
+        except TelegramNetworkError as exc:
+            if attempt >= settings.telegram_file_download_attempts:
+                logger.warning("Job notification dropped (chat=%s) after %s tries: %s", chat_id, attempt, exc)
+                return
+            logger.warning("Job notification timed out, retry %s: %s", attempt, exc)
+            await asyncio.sleep(settings.telegram_file_download_retry_delay_seconds)
 
 
 @dataclass(frozen=True)
@@ -118,11 +143,11 @@ async def _process_job(bot: Bot, job_id: int) -> None:
         return
 
     try:
-        await bot.send_message(job.chat_id, f"Задача #{job.id}: скачиваю файл из Telegram...")
+        await _notify(bot, job.chat_id, f"Задача #{job.id}: скачиваю файл из Telegram...")
         local_path = await download_telegram_file(bot, job.file_id, job.file_type, job.file_name)
 
         provider_name = _provider_name(job.stt_provider)
-        await bot.send_message(job.chat_id, f"Задача #{job.id}: отправляю аудио на расшифровку через {provider_name}...")
+        await _notify(bot, job.chat_id, f"Задача #{job.id}: отправляю аудио на расшифровку через {provider_name}...")
         raw_transcript, segments = await _transcribe_with_provider(bot, job, local_path, job.stt_provider)
 
         participant_name, exercise_name, exercise_instructions = await _exercise_context(job.exercise_id)
@@ -135,14 +160,16 @@ async def _process_job(bot: Bot, job_id: int) -> None:
         await _mark_completed(job.id, record_id, transcript_path)
 
         if job.exercise_id is not None:
-            await bot.send_message(
+            await _notify(
+                bot,
                 job.chat_id,
                 f"✅ Расшифровка готова (запись #{record_id}) и привязана к упражнению.\n"
                 "Теперь отправьте блокнот наблюдателя по этому упражнению (.xlsx) 📊",
                 reply_markup=transcript_actions_keyboard(record_id),
             )
         else:
-            await bot.send_message(
+            await _notify(
+                bot,
                 job.chat_id,
                 f"Задача #{job.id}: расшифровано через {provider_name}.\n"
                 f"ID записи: {record_id}\n"
@@ -152,23 +179,23 @@ async def _process_job(bot: Bot, job_id: int) -> None:
     except SpeechKitError as exc:
         await _mark_failed(job_id, str(exc))
         logger.exception("SpeechKit failed for media job id=%s", job_id)
-        await bot.send_message(job.chat_id, f"Задача #{job.id}: не удалось расшифровать запись: {escape(str(exc), quote=False)}")
+        await _notify(bot, job.chat_id, f"Задача #{job.id}: не удалось расшифровать запись: {escape(str(exc), quote=False)}")
     except AITunnelWhisperError as exc:
         await _mark_failed(job_id, str(exc))
         logger.exception("AI Tunnel Whisper failed for media job id=%s", job_id)
-        await bot.send_message(job.chat_id, f"Задача #{job.id}: AI Tunnel Whisper не смог расшифровать запись: {escape(str(exc), quote=False)}")
+        await _notify(bot, job.chat_id, f"Задача #{job.id}: AI Tunnel Whisper не смог расшифровать запись: {escape(str(exc), quote=False)}")
     except NeuroAPIWhisperError as exc:
         await _mark_failed(job_id, str(exc))
         logger.exception("NeuroAPI Whisper failed for media job id=%s", job_id)
-        await bot.send_message(job.chat_id, f"Задача #{job.id}: NeuroAPI Whisper не смог расшифровать запись: {escape(str(exc), quote=False)}")
+        await _notify(bot, job.chat_id, f"Задача #{job.id}: NeuroAPI Whisper не смог расшифровать запись: {escape(str(exc), quote=False)}")
     except AudioPreprocessingError as exc:
         await _mark_failed(job_id, str(exc))
         logger.exception("Audio preprocessing failed for media job id=%s", job_id)
-        await bot.send_message(job.chat_id, f"Задача #{job.id}: не удалось подготовить аудио для Whisper: {escape(str(exc), quote=False)}")
+        await _notify(bot, job.chat_id, f"Задача #{job.id}: не удалось подготовить аудио для Whisper: {escape(str(exc), quote=False)}")
     except Exception as exc:
         await _mark_failed(job_id, str(exc))
         logger.exception("Media job failed id=%s", job_id)
-        await bot.send_message(job.chat_id, f"Задача #{job.id}: произошла ошибка при обработке файла.")
+        await _notify(bot, job.chat_id, f"Задача #{job.id}: произошла ошибка при обработке файла.")
 
 
 async def _exercise_context(
@@ -280,14 +307,15 @@ async def _transcribe_aitunnel_chunked(
         text, segments = await transcribe_aitunnel_with_segments(path)
         return text, _offset_segments(segments, offset)
 
-    await bot.send_message(
+    await _notify(
+        bot,
         job.chat_id,
         f"Задача #{job.id}: запись длинная, разбил на {len(parts)} частей и расшифрую по очереди.",
     )
     transcripts: list[str] = []
     all_segments: list[dict[str, object]] = []
     for index, (path, offset) in enumerate(parts, start=1):
-        await bot.send_message(job.chat_id, f"Задача #{job.id}: расшифровываю часть {index}/{len(parts)}...")
+        await _notify(bot, job.chat_id, f"Задача #{job.id}: расшифровываю часть {index}/{len(parts)}...")
         text, segments = await transcribe_aitunnel_with_segments(path)
         transcripts.append(text)
         all_segments.extend(_offset_segments(segments, offset))
@@ -312,7 +340,7 @@ async def _label_roles_or_keep_raw(
         return transcript
 
     try:
-        await bot.send_message(job.chat_id, f"Задача #{job.id}: размечаю роли ведущий/участник...")
+        await _notify(bot, job.chat_id, f"Задача #{job.id}: размечаю роли ведущий/участник...")
         return await label_transcript_roles(
             transcript,
             assessed_participant_name=assessed_participant_name,
@@ -321,7 +349,8 @@ async def _label_roles_or_keep_raw(
         )
     except RoleLabelingError as exc:
         logger.exception("Role labeling failed for media job id=%s", job.id)
-        await bot.send_message(
+        await _notify(
+            bot,
             job.chat_id,
             f"Задача #{job.id}: расшифровка готова, но роли не удалось разметить: {escape(str(exc), quote=False)}",
         )
