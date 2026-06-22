@@ -350,11 +350,21 @@ def _coerce_indicator(item: Any) -> IndicatorAnalysis | None:
     )
 
 
+_ROLE_PREFIX_RE = re.compile(r"^\s*(?:участник|ведущий|наблюдатель)\s*:\s*", re.IGNORECASE)
+
+
+def _clean_quote(text: str) -> str:
+    """Strip a leading role label ("Участник:"/"Ведущий:") the LLM sometimes glues
+    onto the quote. It is not part of the speech, and it breaks timestamp matching."""
+    cleaned = _ROLE_PREFIX_RE.sub("", text or "").strip()
+    return cleaned.strip("«»\"' ").strip()
+
+
 def _coerce_evidence(value: Any) -> list[IndicatorEvidence]:
     if not value:
         return []
     if isinstance(value, str):
-        text = value.strip()
+        text = _clean_quote(value)
         return [IndicatorEvidence(quote=text)] if text else []
     if isinstance(value, dict):
         value = [value]
@@ -363,11 +373,11 @@ def _coerce_evidence(value: Any) -> list[IndicatorEvidence]:
     out: list[IndicatorEvidence] = []
     for entry in value:
         if isinstance(entry, str):
-            text = entry.strip()
+            text = _clean_quote(entry)
             if text:
                 out.append(IndicatorEvidence(quote=text))
         elif isinstance(entry, dict):
-            quote = _as_text(entry.get("quote") or entry.get("text"))
+            quote = _clean_quote(_as_text(entry.get("quote") or entry.get("text")))
             if quote:
                 timestamp = _as_text(entry.get("timestamp")) or None
                 out.append(IndicatorEvidence(quote=quote, timestamp=timestamp))
