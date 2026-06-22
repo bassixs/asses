@@ -43,6 +43,15 @@ async def label_transcript_roles(
     if not settings.role_labeling_enabled or not cleaned:
         return cleaned
 
+    # The participant is identified by a privacy-safe code now (e.g. "№4"), not their
+    # spoken name. A code never appears in the recording, so using it as the role anchor
+    # misleads the model (it invented who the participant was and inverted the roles).
+    # Only trust the identifier as an anchor if it actually occurs in the transcript;
+    # otherwise drop it and rely on the exercise instructions/library + dialogue structure.
+    if assessed_participant_name and not _name_appears_in_text(assessed_participant_name, cleaned):
+        logger.info("Role labeling: identifier %r is not a spoken name, dropping as anchor", assessed_participant_name)
+        assessed_participant_name = None
+
     if _looks_role_labeled(cleaned) and not assessed_participant_name:
         return _normalize_role_labeled_text(cleaned)
 
@@ -63,6 +72,17 @@ async def label_transcript_roles(
         previous_tail = _tail_text(chunk_result.segments)
 
     return _merge_labeled_parts(labeled_parts)
+
+
+def _name_appears_in_text(name: str, text: str) -> bool:
+    """True if any meaningful token of the identifier occurs in the transcript.
+
+    Real spoken names ("Маргарита") pass; privacy codes ("№4", "AC-042") do not,
+    because they have no alphabetic name tokens that appear in the recording.
+    """
+    text_lower = text.lower()
+    tokens = [token for token in re.findall(r"[а-яёa-z]{3,}", name.lower())]
+    return any(token in text_lower for token in tokens)
 
 
 def extract_participant_transcript(transcript: str) -> str:
