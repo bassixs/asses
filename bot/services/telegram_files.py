@@ -53,7 +53,7 @@ async def get_telegram_file_with_retry(bot: Bot, file_id: str) -> File:
     last_error: TelegramNetworkError | None = None
     for attempt in range(1, settings.telegram_file_download_attempts + 1):
         try:
-            return await bot.get_file(file_id, request_timeout=settings.telegram_file_request_timeout_seconds)
+            return await bot.get_file(file_id, request_timeout=settings.telegram_get_file_timeout_seconds)
         except TelegramNetworkError as exc:
             last_error = exc
             if attempt >= settings.telegram_file_download_attempts:
