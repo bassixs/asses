@@ -93,6 +93,14 @@ async def list_participants(center_id: int, session: AsyncSession = Depends(get_
     return [_participant_out(p) for p in rows]
 
 
+@router.get("/participants/{participant_id}", response_model=ParticipantOut)
+async def get_participant(participant_id: int, session: AsyncSession = Depends(get_session)) -> ParticipantOut:
+    participant = await session.get(Participant, participant_id)
+    if participant is None:
+        raise HTTPException(status_code=404, detail="Участник не найден")
+    return _participant_out(participant)
+
+
 # ---- exercises -----------------------------------------------------------------------------
 
 @router.post("/exercises", response_model=ExerciseOut)
@@ -120,3 +128,11 @@ async def list_exercises(participant_id: int, session: AsyncSession = Depends(ge
         select(Exercise).where(Exercise.participant_id == participant_id).order_by(Exercise.id)
     )
     return [_exercise_out(e) for e in rows]
+
+
+@router.get("/exercises/{exercise_id}", response_model=ExerciseOut)
+async def get_exercise(exercise_id: int, session: AsyncSession = Depends(get_session)) -> ExerciseOut:
+    exercise = await session.get(Exercise, exercise_id)
+    if exercise is None:
+        raise HTTPException(status_code=404, detail="Упражнение не найдено")
+    return _exercise_out(exercise)
