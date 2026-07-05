@@ -1,0 +1,122 @@
+from __future__ import annotations
+
+from fastapi import APIRouter, Depends, HTTPException
+from sqlalchemy import select
+from sqlalchemy.ext.asyncio import AsyncSession
+
+from bot.models import AssessmentCenter, Exercise, Participant
+from web.backend.deps import WEB_OWNER_ID, get_session
+from web.backend.schemas import (
+    CenterCreate,
+    CenterOut,
+    ExerciseCreate,
+    ExerciseOut,
+    ParticipantCreate,
+    ParticipantOut,
+)
+
+router = APIRouter(tags=["assessments"])
+
+
+def _participant_out(participant: Participant) -> ParticipantOut:
+    return ParticipantOut(id=participant.id, code=participant.full_name, center_id=participant.center_id)
+
+
+def _exercise_out(exercise: Exercise) -> ExerciseOut:
+    return ExerciseOut(
+        id=exercise.id,
+        name=exercise.name,
+        participant_id=exercise.participant_id,
+        center_id=exercise.center_id,
+        has_instructions=bool(exercise.instructions_text),
+    )
+
+
+# ---- centers -------------------------------------------------------------------------------
+
+@router.post("/centers", response_model=CenterOut)
+async def create_center(payload: CenterCreate, session: AsyncSession = Depends(get_session)) -> CenterOut:
+    center = AssessmentCenter(chat_id=WEB_OWNER_ID, user_id=WEB_OWNER_ID, name=payload.name.strip())
+    session.add(center)
+    await session.commit()
+    await session.refresh(center)
+    return CenterOut(id=center.id, name=center.name, created_at=center.created_at)
+
+
+@router.get("/centers", response_model=list[CenterOut])
+async def list_centers(session: AsyncSession = Depends(get_session)) -> list[CenterOut]:
+    rows = await session.scalars(select(AssessmentCenter).order_by(AssessmentCenter.id.desc()))
+    return [CenterOut(id=c.id, name=c.name, created_at=c.created_at) for c in rows]
+
+
+@router.get("/centers/{center_id}", response_model=CenterOut)
+async def get_center(center_id: int, session: AsyncSession = Depends(get_session)) -> CenterOut:
+    center = await session.get(AssessmentCenter, center_id)
+    if center is None:
+        raise HTTPException(status_code=404, detail="Центр не найден")
+    return CenterOut(id=center.id, name=center.name, created_at=center.created_at)
+
+
+# ---- participants --------------------------------------------------------------------------
+
+@router.post("/participants", response_model=ParticipantOut)
+async def create_participant(
+    payload: ParticipantCreate,
+    session: AsyncSession = Depends(get_session),
+) -> ParticipantOut:
+    center = await session.get(AssessmentCenter, payload.center_id)
+    if center is None:
+        raise HTTPException(status_code=404, detail="Центр не найден")
+
+    participant = Participant(
+        center_id=center.id,
+        chat_id=WEB_OWNER_ID,
+        user_id=WEB_OWNER_ID,
+        full_name=(payload.code or "").strip(),
+    )
+    session.add(participant)
+    await session.commit()
+    await session.refresh(participant)
+
+    if not participant.full_name:
+        # Auto-assign a privacy-safe number once the row id is known.
+        participant.full_name = f"№{participant.id}"
+        await session.commit()
+    return _participant_out(participant)
+
+
+@router.get("/centers/{center_id}/participants", response_model=list[ParticipantOut])
+async def list_participants(center_id: int, session: AsyncSession = Depends(get_session)) -> list[ParticipantOut]:
+    rows = await session.scalars(
+        select(Participant).where(Participant.center_id == center_id).order_by(Participant.id)
+    )
+    return [_participant_out(p) for p in rows]
+
+
+# ---- exercises -----------------------------------------------------------------------------
+
+@router.post("/exercises", response_model=ExerciseOut)
+async def create_exercise(payload: ExerciseCreate, session: AsyncSession = Depends(get_session)) -> ExerciseOut:
+    participant = await session.get(Participant, payload.participant_id)
+    if participant is None or participant.center_id != payload.center_id:
+        raise HTTPException(status_code=404, detail="Участник не найден в этом центре")
+
+    exercise = Exercise(
+        center_id=payload.center_id,
+        participant_id=payload.participant_id,
+        chat_id=WEB_OWNER_ID,
+        user_id=WEB_OWNER_ID,
+        name=payload.name.strip(),
+    )
+    session.add(exercise)
+    await session.commit()
+    await session.refresh(exercise)
+    return _exercise_out(exercise)
+
+
+@router.get("/participants/{participant_id}/exercises", response_model=list[ExerciseOut])
+async def list_exercises(participant_id: int, session: AsyncSession = Depends(get_session)) -> list[ExerciseOut]:
+    rows = await session.scalars(
+        select(Exercise).where(Exercise.participant_id == participant_id).order_by(Exercise.id)
+    )
+    return [_exercise_out(e) for e in rows]

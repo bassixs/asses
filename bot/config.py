@@ -20,10 +20,12 @@ DEFAULT_COMPETENCIES = [
 
 
 class Settings(BaseSettings):
-    bot_token: str = Field(validation_alias="BOT_TOKEN")
-    yandex_speechkit_api_key: str = Field(validation_alias="YANDEX_SPEECHKIT_API_KEY")
-    yandex_gpt_api_key: str = Field(validation_alias="YANDEX_GPT_API_KEY")
-    yandex_folder_id: str = Field(validation_alias="YANDEX_FOLDER_ID")
+    # Defaults to "" so the shared services can be imported by the web backend without
+    # bot-only credentials. The Telegram bot still reads real values from the environment.
+    bot_token: str = Field(default="", validation_alias="BOT_TOKEN")
+    yandex_speechkit_api_key: str = Field(default="", validation_alias="YANDEX_SPEECHKIT_API_KEY")
+    yandex_gpt_api_key: str = Field(default="", validation_alias="YANDEX_GPT_API_KEY")
+    yandex_folder_id: str = Field(default="", validation_alias="YANDEX_FOLDER_ID")
     yandex_storage_bucket: str | None = Field(default=None, validation_alias="YANDEX_STORAGE_BUCKET")
     yandex_storage_access_key_id: str | None = Field(default=None, validation_alias="YANDEX_STORAGE_ACCESS_KEY_ID")
     yandex_storage_secret_access_key: str | None = Field(
