@@ -44,6 +44,12 @@ class Settings(BaseSettings):
         default=900,
         validation_alias="TELEGRAM_FILE_REQUEST_TIMEOUT_SECONDS",
     )
+    # get_file only fetches metadata, so it should fail fast when the local Bot API stalls
+    # (a hung attempt then retries on a fresh connection) instead of blocking for minutes.
+    telegram_get_file_timeout_seconds: int = Field(
+        default=120,
+        validation_alias="TELEGRAM_GET_FILE_TIMEOUT_SECONDS",
+    )
     telegram_file_download_timeout_seconds: int = Field(
         default=900,
         validation_alias="TELEGRAM_FILE_DOWNLOAD_TIMEOUT_SECONDS",

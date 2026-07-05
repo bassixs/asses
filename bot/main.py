@@ -9,6 +9,7 @@ from typing import Any
 from aiogram import BaseMiddleware, Bot, Dispatcher
 from aiogram.client.session.aiohttp import AiohttpSession
 from aiogram.client.telegram import TelegramAPIServer
+from aiogram.exceptions import TelegramNetworkError
 from aiogram.fsm.storage.memory import MemoryStorage
 from aiogram.types import TelegramObject
 
@@ -61,7 +62,13 @@ async def main() -> None:
     dispatcher.include_router(media.router)
     dispatcher.errors.register(guided.on_guided_error)
 
-    await bot.delete_webhook(drop_pending_updates=settings.telegram_drop_pending_updates_on_start)
+    # Non-fatal: a stalled local Bot API at startup must not crash the bot. delete_webhook
+    # only clears a webhook we don't use in polling mode; if it times out, proceed to polling
+    # (aiogram retries getUpdates on its own once the Bot API responds).
+    try:
+        await bot.delete_webhook(drop_pending_updates=settings.telegram_drop_pending_updates_on_start)
+    except TelegramNetworkError as exc:
+        logging.getLogger(__name__).warning("delete_webhook failed at startup, continuing to polling: %s", exc)
     logging.getLogger(__name__).info("Bot started")
     media_worker = start_media_job_worker(bot)
     try:
