@@ -31,6 +31,7 @@ from bot.models import (
     Exercise,
     InterviewRecord,
     MediaProcessingJob,
+    NotebookFillResult,
     ObserverNotebook,
     Participant,
 )
@@ -40,7 +41,11 @@ from bot.services.instruction_files import (
     extract_instruction_text,
     is_supported_instruction,
 )
-from bot.services.observer_notebook import NotebookProcessingError, extract_notebook_indicators
+from bot.services.observer_notebook import (
+    NotebookProcessingError,
+    extract_notebook_indicators,
+    read_filled_notebook,
+)
 from bot.services.telegram_files import download_telegram_file, extract_media_meta
 
 logger = logging.getLogger(__name__)
@@ -52,15 +57,17 @@ class GuidedFlow(StatesGroup):
     participant_name = State()
     exercise_name = State()
     awaiting_instructions = State()
+    awaiting_method = State()
     awaiting_audio = State()
     awaiting_notebook = State()
+    awaiting_filled_notebook = State()
 
 
 _MENU_ROW = [InlineKeyboardButton(text="🏠 В меню", callback_data="guided:home")]
 
 
 def _instructions_keyboard(has_files: bool) -> InlineKeyboardMarkup:
-    next_text = "➡️ Дальше, к аудио" if has_files else "⏭ Пропустить (без инструкций)"
+    next_text = "➡️ Дальше" if has_files else "⏭ Пропустить (без инструкций)"
     return InlineKeyboardMarkup(
         inline_keyboard=[
             [InlineKeyboardButton(text=next_text, callback_data="guided:instructions_done")],
@@ -128,8 +135,9 @@ async def cb_help(callback: CallbackQuery) -> None:
         "ℹ️ Как пользоваться ботом\n\n"
         "📝 Расшифровать запись — пришлите аудио, получите текст с разметкой ролей.\n\n"
         "📊 Оценить одно упражнение — бот проведёт по шагам: центр → участник → упражнение → "
-        "инструкции упражнения (PDF/DOCX, по желанию) → аудио → блокнот наблюдателя (.xlsx), "
-        "и выдаст заполненный блокнот, отчёт и ИПР.\n\n"
+        "инструкции упражнения (PDF/DOCX, по желанию) → выбор способа оценки: по аудиозаписи "
+        "(бот расшифрует и заполнит блокнот) ИЛИ загрузить уже заполненный наблюдателем блокнот "
+        "(например, групповое упражнение) → отчёт и ИПР.\n\n"
         "🏆 Оценить все упражнения — то же, но можно добавить несколько упражнений одному "
         "участнику; отчёт и ИПР построятся по всем сразу.\n\n"
         "На каждом шаге бот подсказывает, что отправить. Команды (/create_center и т.д.) тоже работают.\n\n"
@@ -322,7 +330,7 @@ async def step_instructions(message: Message, bot: Bot, session: AsyncSession, s
     await session.commit()
     await message.answer(
         f"✅ Инструкция добавлена ({len(text)} символов). "
-        "Пришлите ещё файл или нажмите «Дальше, к аудио».",
+        "Пришлите ещё файл или нажмите «Дальше».",
         reply_markup=_instructions_keyboard(has_files=True),
     )
 
@@ -342,7 +350,133 @@ async def cb_instructions_done(callback: CallbackQuery, state: FSMContext) -> No
     if callback.message is None:
         return
     await callback.answer()
+    await _choose_method(callback.message, state)
+
+
+# ---- assessment method (audio vs already-filled notebook) ----------------------------------
+
+def _method_keyboard() -> InlineKeyboardMarkup:
+    return InlineKeyboardMarkup(
+        inline_keyboard=[
+            [InlineKeyboardButton(text="🎙 Оценить по аудиозаписи", callback_data="guided:method_audio")],
+            [InlineKeyboardButton(text="📊 Загрузить заполненный блокнот", callback_data="guided:method_filled")],
+            _MENU_ROW,
+        ]
+    )
+
+
+async def _choose_method(message: Message, state: FSMContext) -> None:
+    await state.set_state(GuidedFlow.awaiting_method)
+    await message.answer(
+        "Как оценить это упражнение?\n\n"
+        "🎙 По аудиозаписи — пришлёте аудио, бот расшифрует, разметит роли и заполнит блокнот.\n"
+        "📊 Загрузить заполненный блокнот — если наблюдатель уже оценил вживую "
+        "(например, групповое упражнение): пришлёте готовый .xlsx, бот возьмёт оценки как есть.",
+        reply_markup=_method_keyboard(),
+    )
+
+
+@router.callback_query(GuidedFlow.awaiting_method, F.data == "guided:method_audio")
+async def cb_method_audio(callback: CallbackQuery, state: FSMContext) -> None:
+    if callback.message is None:
+        return
+    await callback.answer()
     await _go_to_audio(callback.message, state)
+
+
+@router.callback_query(GuidedFlow.awaiting_method, F.data == "guided:method_filled")
+async def cb_method_filled(callback: CallbackQuery, state: FSMContext) -> None:
+    if callback.message is None:
+        return
+    await state.set_state(GuidedFlow.awaiting_filled_notebook)
+    await callback.answer()
+    await callback.message.answer(
+        "📊 Пришлите уже заполненный блокнот наблюдателя (.xlsx) — со статусами в колонке "
+        "«Проявления» (+/−/НЗ) и проставленными уровнями. Бот прочитает оценки как есть, "
+        "без расшифровки.",
+        reply_markup=_menu_keyboard(),
+    )
+
+
+@router.message(GuidedFlow.awaiting_filled_notebook, F.document)
+async def step_filled_notebook(message: Message, bot: Bot, session: AsyncSession, state: FSMContext) -> None:
+    if message.from_user is None or message.document is None:
+        return
+    if not (message.document.file_name or "").lower().endswith(".xlsx"):
+        await message.answer("Нужен заполненный блокнот в формате .xlsx.", reply_markup=_menu_keyboard())
+        return
+
+    data = await state.get_data()
+    exercise_id = int(data["exercise_id"]) if data.get("exercise_id") else None
+    exercise = await session.get(Exercise, exercise_id) if exercise_id else None
+    if exercise is None:
+        await state.clear()
+        await message.answer("Не нашёл активное упражнение. Начните заново.", reply_markup=_menu_keyboard())
+        return
+
+    await message.answer("Получил заполненный блокнот. Читаю оценки...")
+    try:
+        local_path = await _download_notebook(bot, message)
+        result_json = read_filled_notebook(local_path)
+    except NotebookProcessingError as exc:
+        await message.answer(
+            f"Не удалось прочитать блокнот: {escape(str(exc), quote=False)}\n"
+            "Проверьте статусы и уровни и отправьте .xlsx ещё раз.",
+            reply_markup=_menu_keyboard(),
+        )
+        return
+    except Exception:
+        logger.exception("Guided filled-notebook upload failed")
+        await message.answer(
+            "Ошибка при загрузке блокнота (возможно, связь с Telegram). Отправьте файл .xlsx ещё раз.",
+            reply_markup=_menu_keyboard(),
+        )
+        return
+
+    notebook = ObserverNotebook(
+        chat_id=message.chat.id,
+        user_id=message.from_user.id,
+        exercise_id=exercise.id,
+        file_id=message.document.file_id,
+        file_unique_id=message.document.file_unique_id,
+        file_name=message.document.file_name,
+        file_path=str(local_path),
+    )
+    session.add(notebook)
+    await session.commit()
+    await session.refresh(notebook)
+
+    fill_result = NotebookFillResult(
+        exercise_id=exercise.id,
+        record_id=None,
+        notebook_id=notebook.id,
+        chat_id=message.chat.id,
+        user_id=message.from_user.id,
+        output_path=str(local_path),
+        result_json=result_json,
+    )
+    session.add(fill_result)
+    await session.commit()
+    await state.set_state(None)
+
+    levels = result_json.get("levels", {}) or {}
+    levels_text = "; ".join(f"{name}: {data.get('level')}" for name, data in levels.items()) or "—"
+    await message.answer(
+        f"✅ Заполненный блокнот принят: «{exercise.name}», индикаторов — {result_json.get('indicator_count')}.\n"
+        f"Уровни: {levels_text}\n\n"
+        "Дальше можно добавить ещё упражнение или сформировать отчёт.",
+        reply_markup=_next_step_keyboard(),
+    )
+
+
+@router.message(GuidedFlow.awaiting_method, F.text)
+async def step_method_text(message: Message) -> None:
+    await message.answer("Выберите способ оценки кнопкой ниже.", reply_markup=_method_keyboard())
+
+
+@router.message(GuidedFlow.awaiting_filled_notebook, F.text)
+async def step_filled_notebook_text(message: Message) -> None:
+    await message.answer("Жду заполненный блокнот в формате .xlsx.", reply_markup=_menu_keyboard())
 
 
 # ---- audio step ----------------------------------------------------------------------------

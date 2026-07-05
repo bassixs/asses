@@ -433,6 +433,124 @@ def fill_observer_notebook(
     }
 
 
+def read_filled_notebook(workbook_path: Path) -> dict[str, object]:
+    """Read an observer notebook already filled in by HR and return the same result_json
+    shape that fill_observer_notebook produces, so the report pipeline consumes it identically.
+
+    Statuses are taken from the "Проявления" column and competency levels from the yellow
+    cells AS FILLED BY THE OBSERVER — they are NOT recomputed. Used when HR scores an exercise
+    manually (e.g. the group exercise) instead of the audio → AI-analysis path.
+    """
+    indicators = extract_notebook_indicators(workbook_path)
+    workbook = load_workbook(workbook_path, data_only=True)
+    sheet = workbook.active
+
+    results: list[dict[str, object]] = []
+    filled = 0
+    for indicator in indicators:
+        raw_status = _cell_text(sheet.cell(row=indicator.row, column=indicator.status_col).value)
+        status = _normalize_manual_status(raw_status)
+        if raw_status:
+            filled += 1
+        results.append(
+            {
+                "indicator_id": indicator.indicator_id,
+                "status": status,
+                "evidence": [],
+                "comment": _cell_text(sheet.cell(row=indicator.row, column=indicator.comment_col).value),
+                "observable_reason": "",
+            }
+        )
+
+    if filled == 0:
+        raise NotebookProcessingError(
+            "В блокноте не проставлено ни одной оценки в колонке 'Проявления'. "
+            "Заполните статусы (+/−/НЗ) и уровни, затем загрузите файл снова."
+        )
+
+    levels = _read_manual_competency_levels(sheet, indicators)
+
+    return {
+        "role_summary": "",
+        "participant_summary": "",
+        "indicator_count": len(indicators),
+        "levels": levels,
+        "indicators": [
+            {
+                "indicator_id": item.indicator_id,
+                "competence": item.competence,
+                "indicator": item.indicator,
+                "row": item.row,
+            }
+            for item in indicators
+        ],
+        "results": results,
+        "source": "manual",
+    }
+
+
+def _normalize_manual_status(raw: str) -> str:
+    text = (raw or "").strip().lower()
+    if not text:
+        return "НЗ"
+    if "нз" in text or "н/з" in text or "н.з" in text:
+        return "НЗ"
+    if text[0] in "+✓✔" or text in {"да", "плюс"}:
+        return "+"
+    if text[0] in "-–—−" or text in {"нет", "минус"}:
+        return "-"
+    return "НЗ"
+
+
+def _read_manual_competency_levels(sheet, indicators: list[IndicatorRow]) -> dict[str, dict[str, float | int]]:
+    """Read the observer-provided level of each competence from its yellow cell (not recomputed).
+
+    Prefers the value on the competence header row (name in col A/B); falls back to the first
+    numeric value in the level column within that competence's block.
+    """
+    indicator_by_row = {item.row: item for item in indicators}
+
+    header_rows: list[tuple[int, str]] = []
+    seen: set[str] = set()
+    competences = {item.competence for item in indicators}
+    for row in range(1, sheet.max_row + 1):
+        for column in (1, 2):
+            name = _cell_text(sheet.cell(row=row, column=column).value)
+            if name in competences and name not in seen:
+                header_rows.append((row, name))
+                seen.add(name)
+
+    levels: dict[str, dict[str, float | int]] = {}
+    for index, (header_row, competence) in enumerate(header_rows):
+        level_col = _level_column_for_competence(indicator_by_row, competence)
+        end_row = header_rows[index + 1][0] if index + 1 < len(header_rows) else sheet.max_row + 1
+        value = _parse_level_value(sheet.cell(row=header_row, column=level_col).value)
+        if value is None:
+            for scan_row in range(header_row, end_row):
+                value = _parse_level_value(sheet.cell(row=scan_row, column=level_col).value)
+                if value is not None:
+                    break
+        levels[competence] = {"level": value if value is not None else 0, "source": "manual"}
+
+    for competence in competences:
+        levels.setdefault(competence, {"level": 0, "source": "manual"})
+    return levels
+
+
+def _parse_level_value(value: object) -> float | None:
+    if value is None:
+        return None
+    if isinstance(value, (int, float)):
+        return float(value)
+    text = str(value).strip().replace(",", ".")
+    if not text:
+        return None
+    try:
+        return float(text)
+    except ValueError:
+        return None
+
+
 def _build_notebook_system_prompt() -> str:
     return """
 Ты — эксперт ассессмент-центра и обученный наблюдатель.

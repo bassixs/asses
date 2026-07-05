@@ -44,9 +44,12 @@ class NotebookFillResult(Base):
         index=True,
         nullable=True,
     )
-    record_id: Mapped[int] = mapped_column(
+    # Null for manually-filled notebooks (HR uploads a filled notebook, so there is
+    # no audio transcript / interview record behind it).
+    record_id: Mapped[int | None] = mapped_column(
         ForeignKey("interview_records.id", ondelete="CASCADE"),
         index=True,
+        nullable=True,
     )
     notebook_id: Mapped[int] = mapped_column(
         ForeignKey("observer_notebooks.id", ondelete="CASCADE"),
