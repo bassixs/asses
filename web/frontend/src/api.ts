@@ -1,4 +1,7 @@
+import { demoApi, IS_DEMO } from "./demo";
 import type { Center, Exercise, ExerciseStatus, Participant } from "./types";
+
+export { IS_DEMO };
 
 const BASE = "/api";
 
@@ -57,7 +60,7 @@ async function downloadFile(path: string, method: "GET" | "POST" = "GET"): Promi
   URL.revokeObjectURL(url);
 }
 
-export const api = {
+const realApi = {
   listCenters: () => req<Center[]>("/centers"),
   createCenter: (name: string) => jsonPost<Center>("/centers", { name }),
   getCenter: (id: number) => req<Center>(`/centers/${id}`),
@@ -96,3 +99,6 @@ export const api = {
     downloadFile(`/participants/${participantId}/report/file?fmt=${fmt}`),
   downloadIpr: (participantId: number) => downloadFile(`/participants/${participantId}/ipr`, "POST"),
 };
+
+// На GitHub Pages (или с ?demo=1) бэкенда нет — работаем на мок-данных.
+export const api: typeof realApi = IS_DEMO ? demoApi : realApi;

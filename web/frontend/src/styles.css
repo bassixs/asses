@@ -88,6 +88,17 @@ a:hover {
   border-radius: 999px;
 }
 
+/* ---- demo banner ---- */
+.demo-banner {
+  text-align: center;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--accent);
+  background: rgba(198, 242, 78, 0.09);
+  border-bottom: 1px solid var(--line);
+  padding: 9px 16px;
+}
+
 /* ---- layout ---- */
 .container {
   max-width: 940px;
