@@ -36,12 +36,20 @@ export default function Dashboard() {
 
   return (
     <>
-      <div className="card">
-        <h1>Центры оценки</h1>
-        <p className="muted">
-          Создайте центр, добавьте участников (по коду, без ФИО) и упражнения.
+      <div className="hero">
+        <span className="eyebrow">✦ Оценка компетенций на ИИ</span>
+        <h1>
+          Центры оценки — <span className="accent">быстро и наглядно</span>
+        </h1>
+        <p>
+          Создавайте центры и участников, загружайте аудио или готовый блокнот — система
+          расшифрует, оценит по индикаторам и соберёт отчёт с ИПР.
         </p>
-        <div className="row" style={{ marginTop: 12 }}>
+      </div>
+
+      <div className="card">
+        <h2>Новый центр</h2>
+        <div className="row">
           <input
             type="text"
             placeholder="Название центра"

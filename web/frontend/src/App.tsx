@@ -9,8 +9,10 @@ export default function App() {
     <BrowserRouter>
       <header className="topbar">
         <Link to="/" className="brand">
-          🏢 Ассессмент-центр
+          <span className="dot" />
+          Ассессмент-центр
         </Link>
+        <span className="tag">HR-инструмент</span>
       </header>
       <main className="container">
         <Routes>
