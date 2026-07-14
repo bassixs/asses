@@ -68,6 +68,9 @@
 ### Фронтенд (React + Vite + TypeScript) — `web/frontend/`
 - SPA: дашборд → центр → участник → упражнение; страница результата; скачивания.
 - Шаг упражнения повторяет гайд-флоу (инструкции, выбор способа, загрузки, опрос статуса).
+- **Редизайн (2026-07-13):** тёмная тема с лаймовым акцентом и свечением, «стеклянные» карточки,
+  шрифт Manrope, hero-блок, hover-анимации — современный вид в стиле референса заказчика.
+- **Демо-режим** (`demo.ts`): мок-API для витрины без бэкенда (GitHub Pages / `?demo=1`).
 
 ### Проверено на сервере (смоук-тест, реальные данные)
 - CRUD, загрузка **заполненного блокнота** (уровни читаются из правильных ячеек — подтверждено),
@@ -86,21 +89,29 @@
 - **Запуск сайта (сейчас):** uvicorn `0.0.0.0:8000` через `nohup`, лог `/var/log/asses-web.log`.
 - **БД:** `/opt/asses/data/app.db` (общая), миграции применены. Загрузки — `/opt/asses/data/uploads`,
   результаты — `/opt/asses/data/reports`.
+- **Запуск сайта:** systemd-сервис **`asses-web`** (active + enabled, `Restart=always`,
+  обёртка `/opt/run-asses-web.sh`) — переживает падения и ребут.
 - **Доступ к сайту:** http://85.239.35.73:8000 — Basic-auth, логин любой, пароль = `ADMIN_BOT_PASSWORD` (`1172`).
 - **Firewall:** ufw активен, порт `8000/tcp` открыт.
+- **⚠️ Хостинг флапает:** провайдер интермиттентно режет ВХОДЯЩИЕ соединения (и веб :8000, и SSH :22
+  отвечают ~6 из 10 раз). Тот же корень, что и блокировка Telegram. Для боевого сайта нужен переезд
+  на нормальный хостинг.
 - **Прочее:** IPv6 отключён (`/etc/sysctl.d/99-disable-ipv6.conf`); cron рестарта `telegram-bot-api`
   каждые 6ч (наследие бота, для сайта не нужен).
 
-### Перезапустить сайт вручную
+### Демо на GitHub Pages (визуальная витрина)
+- **URL: https://bassixs.github.io/asses/** — всегда доступен (CDN GitHub), в отличие от сервера.
+- Это фронтенд в **демо-режиме** (`src/demo.ts`): мок-данные в памяти, «обработка» имитируется,
+  скачивание отключено, сверху плашка. Включается на `*.github.io` или через `?demo=1`.
+- Автодеплой: workflow `.github/workflows/pages.yml` — собирает и публикует при каждом пуше
+  в `web`, если менялся `web/frontend/**`. Pages настроен на build_type=workflow, ветка `web`
+  разрешена в environment `github-pages`.
+
+### Обновить сайт на сервере
 ```bash
 cd /opt/asses-web && git fetch -q origin web && git reset --hard origin/web
 # если менялся фронтенд: cd web/frontend && npm install && npm run build
-set -a; . /opt/asses/.env; set +a
-export DATABASE_URL="sqlite+aiosqlite:////opt/asses/data/app.db"
-export DOWNLOAD_DIR="/opt/asses/data/uploads"
-pkill -f "uvicorn web.backend.app"; sleep 1
-cd /opt/asses-web
-nohup /opt/asses/.venv/bin/uvicorn web.backend.app:app --host 0.0.0.0 --port 8000 >/var/log/asses-web.log 2>&1 &
+systemctl restart asses-web
 ```
 
 ---
@@ -108,7 +119,9 @@ nohup /opt/asses/.venv/bin/uvicorn web.backend.app:app --host 0.0.0.0 --port 800
 ## 6. Что предстоит
 
 ### Продакшн-обвязка
-- [ ] **systemd-сервис** для сайта (автозапуск, рестарт при падении/ребуте) вместо `nohup`.
+- [x] **systemd-сервис** для сайта (`asses-web`, автозапуск + рестарт) — сделано 2026-07-13.
+- [x] **Демо-витрина на GitHub Pages** с автодеплоем — сделано 2026-07-13.
+- [ ] **Переезд на нормальный хостинг** — текущий провайдер флапает по входящим (см. раздел 5).
 - [ ] **Домен + nginx + HTTPS** (Let's Encrypt) — нормальный адрес вместо `IP:8000`, шифрование.
 - [ ] Выделенная БД/каталоги для сайта (или осознанно оставить общие с ботом).
 
