@@ -300,6 +300,15 @@ def _ipr_actions_table(doc: Document, *, ipr: dict[str, Any], resources: list[st
         cells[3].text = expected if ri == 0 else ""
 
 
+# Notebooks name the same competence differently between exercises (e.g. the group
+# notebook appends "(дополнительный замер)"); normalize so aggregation merges them.
+_COMP_SUFFIX_RE = re.compile(r"\s*\(\s*доп(?:олнительный)?\.?\s*замер\s*\)\s*$", re.IGNORECASE)
+
+
+def normalize_competence_name(name: str) -> str:
+    return _COMP_SUFFIX_RE.sub("", (name or "").strip()).strip()
+
+
 def _aggregate(exercise_results: list[dict[str, Any]]) -> dict[str, dict[str, Any]]:
     by_competence: dict[str, dict[str, Any]] = defaultdict(
         lambda: {"levels": [], "indicator_statuses": defaultdict(list), "indicator_quotes": defaultdict(list)}
@@ -309,7 +318,9 @@ def _aggregate(exercise_results: list[dict[str, Any]]) -> dict[str, dict[str, An
         levels = result.get("levels", {})
         for competence, level_data in levels.items():
             if isinstance(level_data, dict):
-                by_competence[competence]["levels"].append(float(level_data.get("level") or 0))
+                by_competence[normalize_competence_name(competence)]["levels"].append(
+                    float(level_data.get("level") or 0)
+                )
 
         indicators = {
             item.get("indicator_id"): item
@@ -320,7 +331,7 @@ def _aggregate(exercise_results: list[dict[str, Any]]) -> dict[str, dict[str, An
             if not isinstance(item, dict):
                 continue
             indicator = indicators.get(item.get("indicator_id"), {})
-            competence = str(indicator.get("competence") or "Компетенция не указана")
+            competence = normalize_competence_name(str(indicator.get("competence") or "Компетенция не указана"))
             indicator_text = str(indicator.get("indicator") or item.get("indicator_id"))
             status = item.get("status")
             if status == "НЗ":

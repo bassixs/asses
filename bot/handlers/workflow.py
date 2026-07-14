@@ -40,6 +40,7 @@ from bot.services.telegram_files import send_document_with_retry
 from bot.services.reports import (
     build_development_plan_text,
     build_participant_report_text,
+    normalize_competence_name,
     save_development_plan_docx,
     save_participant_report_docx,
 )
@@ -416,7 +417,7 @@ def _build_competency_matrix(fills: list[Any], exercise_by_id: dict[int, str]) -
         levels = (fill.result_json or {}).get("levels", {}) or {}
         for competence, level_data in levels.items():
             level = level_data.get("level") if isinstance(level_data, dict) else level_data
-            matrix.setdefault(str(competence), {})[exercise_name] = level
+            matrix.setdefault(normalize_competence_name(str(competence)), {})[exercise_name] = level
     return matrix
 
 
