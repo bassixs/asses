@@ -1,7 +1,7 @@
 # Статус проекта и дорожная карта
 
 Единый «блокнот» по состоянию проекта: что сделано, что живёт на сервере, что предстоит.
-Обновлено: 2026-07-05.
+Обновлено: 2026-07-17.
 
 ---
 
@@ -52,8 +52,9 @@
 
 ## 4. Сайт — что готово
 
-Ветка **`web`**. Переиспользует всё ИИ-ядро бота без изменений: `bot/services/*`, `bot/models/*`,
-`bot/resources/*`. Заменён только слой доставки (Telegram → REST + загрузка файлов).
+Живёт в `main`, код — в `web/` (бэкенд `web/backend`, фронтенд `web/frontend`). Переиспользует
+всё ИИ-ядро бота без изменений: `bot/services/*`, `bot/models/*`, `bot/resources/*`. Заменён
+только слой доставки (Telegram → REST + загрузка файлов).
 
 ### Бэкенд (FastAPI) — `web/backend/`
 - `app.py` — приложение, HTTP Basic-авторизация, раздача собранного SPA.
@@ -93,7 +94,7 @@
 - **Python-окружение:** `/opt/asses/.venv` (общее с ботом; доустановлены fastapi/uvicorn/multipart/httpx).
 - **Node:** v20 (LTS).
 - **Бот:** `/opt/asses`, systemd-сервис `asses-bot` (сейчас бесполезен из-за блокировки Telegram).
-- **Сайт:** `/opt/asses-web` (git-worktree ветки `origin/web`), собранный фронт в `web/frontend/dist`.
+- **Сайт:** `/opt/asses-web` (git-worktree, detached HEAD на `origin/main`), собранный фронт в `web/frontend/dist`.
 - **Запуск сайта (сейчас):** uvicorn `0.0.0.0:8000` через `nohup`, лог `/var/log/asses-web.log`.
 - **БД:** `/opt/asses/data/app.db` (общая), миграции применены. Загрузки — `/opt/asses/data/uploads`,
   результаты — `/opt/asses/data/reports`.
@@ -116,12 +117,12 @@
 - Это фронтенд в **демо-режиме** (`src/demo.ts`): мок-данные в памяти, «обработка» имитируется,
   скачивание отключено, сверху плашка. Включается на `*.github.io` или через `?demo=1`.
 - Автодеплой: workflow `.github/workflows/pages.yml` — собирает и публикует при каждом пуше
-  в `web`, если менялся `web/frontend/**`. Pages настроен на build_type=workflow, ветка `web`
+  в `main`, если менялся `web/frontend/**`. Pages настроен на build_type=workflow, ветка `main`
   разрешена в environment `github-pages`.
 
 ### Обновить сайт на сервере
 ```bash
-cd /opt/asses-web && git fetch -q origin web && git reset --hard origin/web
+cd /opt/asses-web && git fetch -q origin main && git reset --hard origin/main
 # если менялся фронтенд: cd web/frontend && npm install && npm run build
 systemctl restart asses-web
 ```
@@ -154,16 +155,19 @@ systemctl restart asses-web
 
 ### Решения
 - [ ] Судьба бота: оставить замороженным / удалить сервис / вернуть, если появится канал к Telegram.
-- [ ] Влить `web` в `main`, когда сайт станет основным продуктом.
+- [x] **Влить `web` в `main`** — сделано 2026-07-17: `main` = основной продукт (сайт), `web` удалена.
 
 ---
 
 ## 7. Git — структура
 
-- `main` — = замороженный бот (последний бот-коммит + merge группового упражнения).
-- `bot-legacy` — ветка-закладка на бота.
+- **`main`** — единственная активная ветка и **основной продукт (сайт)**. Default на GitHub.
+  Вся разработка и деплой идут отсюда.
+- `bot-legacy` — ветка-закладка на замороженного бота.
 - **`bot-v1.0`** — тег: неизменяемый снимок рабочего бота.
-- **`web`** — активная разработка сайта (бэкенд + фронтенд + деплой-правки).
+
+Ветка `web` слита в `main` (fast-forward) и удалена 2026-07-17 — сайт стал основным
+продуктом, держать две одинаковые ветки незачем. Историю разработки сайта видно в `main`.
 
 Репозиторий: `github.com/bassixs/asses`.
 

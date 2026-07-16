@@ -7,7 +7,7 @@
 | Что | Состояние |
 |---|---|
 | **Сайт** (рабочий продукт) | ✅ работает: **https://hr40.ru** (валидный сертификат Let's Encrypt, http→https редирект), вход: логин любой, пароль `1172`. Внутри — systemd-сервис `asses-web` на :8000 за nginx |
-| Демо-витрина (без бэкенда) | ✅ https://bassixs.github.io/asses/ — автообновляется при пуше в ветку `web` |
+| Демо-витрина (без бэкенда) | ✅ https://bassixs.github.io/asses/ — автообновляется при пуше в ветку `main` |
 | **Telegram-бот** | ⏸ остановлен и выключен из автозапуска (`asses-bot` disabled) |
 | Контейнер `telegram-bot-api` | ⏸ остановлен, автоперезапуск отключён (`--restart=no`) |
 | Cron рестарта контейнера (каждые 6ч) | 🗑 удалён |
@@ -24,9 +24,9 @@ systemctl restart asses-web         # перезапуск
 journalctl -u asses-web -f          # живые логи
 ```
 
-Обновить сайт до свежей ветки `web`:
+Обновить сайт до свежей ветки `main`:
 ```bash
-cd /opt/asses-web && git fetch -q origin web && git reset --hard origin/web
+cd /opt/asses-web && git fetch -q origin main && git reset --hard origin/main
 cd web/frontend && npm install && npm run build   # только если менялся фронтенд
 systemctl restart asses-web
 ```
