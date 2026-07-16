@@ -11,7 +11,7 @@ from fastapi.responses import FileResponse, Response
 
 from bot.config import settings
 from bot.database import init_db
-from web.backend.routers import assessments, files, reports
+from web.backend.routers import assessments, files, overview, reports
 
 _DIST = Path(__file__).resolve().parent.parent / "frontend" / "dist"
 
@@ -51,6 +51,7 @@ async def basic_auth(request: Request, call_next):
 
 app.include_router(assessments.router, prefix="/api")
 app.include_router(files.router, prefix="/api")
+app.include_router(overview.router, prefix="/api")
 app.include_router(reports.router, prefix="/api")
 
 

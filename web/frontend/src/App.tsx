@@ -1,12 +1,22 @@
-import { BrowserRouter, Link, Route, Routes } from "react-router-dom";
+import { BrowserRouter, Link, NavLink, Route, Routes } from "react-router-dom";
 import { IS_DEMO } from "./api";
-import Dashboard from "./pages/Dashboard";
+import Home from "./pages/Home";
+import Workspace from "./pages/Workspace";
+import Analytics from "./pages/Analytics";
+import Faq from "./pages/Faq";
 import CenterPage from "./pages/CenterPage";
 import ParticipantPage from "./pages/ParticipantPage";
 import ExercisePage from "./pages/ExercisePage";
 
 // На GitHub Pages сайт живёт в подпапке (/asses/) — базовый путь берём из сборки.
 const basename = import.meta.env.BASE_URL.replace(/\/$/, "");
+
+const NAV = [
+  { to: "/", label: "Обзор", end: true },
+  { to: "/workspace", label: "Центры", end: false },
+  { to: "/analytics", label: "Аналитика", end: false },
+  { to: "/faq", label: "FAQ", end: false },
+];
 
 export default function App() {
   return (
@@ -16,6 +26,13 @@ export default function App() {
           <span className="dot" />
           Ассессмент-центр
         </Link>
+        <nav className="mainnav">
+          {NAV.map((n) => (
+            <NavLink key={n.to} to={n.to} end={n.end} className={({ isActive }) => (isActive ? "active" : "")}>
+              {n.label}
+            </NavLink>
+          ))}
+        </nav>
         <span className="tag">HR-инструмент</span>
       </header>
       {IS_DEMO && (
@@ -25,12 +42,18 @@ export default function App() {
       )}
       <main className="container">
         <Routes>
-          <Route path="/" element={<Dashboard />} />
+          <Route path="/" element={<Home />} />
+          <Route path="/workspace" element={<Workspace />} />
+          <Route path="/analytics" element={<Analytics />} />
+          <Route path="/faq" element={<Faq />} />
           <Route path="/centers/:id" element={<CenterPage />} />
           <Route path="/participants/:id" element={<ParticipantPage />} />
           <Route path="/exercises/:id" element={<ExercisePage />} />
         </Routes>
       </main>
+      <footer className="footer">
+        Ассессмент-центр · оценка компетенций на ИИ · участники по коду, без ФИО
+      </footer>
     </BrowserRouter>
   );
 }

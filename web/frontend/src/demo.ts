@@ -1,4 +1,4 @@
-import type { Center, Exercise, ExerciseStatus, Participant } from "./types";
+import type { Center, Exercise, ExerciseStatus, Overview, Participant } from "./types";
 
 /**
  * Демо-режим: включается на GitHub Pages (нет бэкенда) или по ?demo=1.
@@ -41,7 +41,32 @@ function notFound(what: string): never {
   throw new Error(`${what} не найден (демо)`);
 }
 
+const demoOverview: Overview = {
+  counts: { centers: 3, participants: 24, exercises: 61, processed: 52, reports: 19 },
+  level_max: 3,
+  avg_level: 1.9,
+  measurements: 260,
+  avg_by_competence: [
+    { name: "ЭФФЕКТИВНАЯ ОРГАНИЗАЦИЯ", avg: 2.4, count: 52 },
+    { name: "ОРИЕНТАЦИЯ НА РЕЗУЛЬТАТ", avg: 2.1, count: 52 },
+    { name: "САМОРАЗВИТИЕ", avg: 1.9, count: 52 },
+    { name: "ЭФФЕКТИВНАЯ КОММУНИКАЦИЯ", avg: 1.7, count: 52 },
+    { name: "ГОТОВНОСТЬ К ИЗМЕНЕНИЯМ", avg: 1.3, count: 52 },
+  ],
+  level_bands: [
+    { name: "Не проявлена", count: 14 },
+    { name: "Ниже нормы", count: 63 },
+    { name: "Норма", count: 128 },
+    { name: "Выше нормы", count: 55 },
+  ],
+};
+
 export const demoApi = {
+  async getOverview() {
+    await sleep(300);
+    return demoOverview;
+  },
+
   async listCenters() {
     await sleep(250);
     return [...centers];

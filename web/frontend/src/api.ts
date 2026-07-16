@@ -1,5 +1,5 @@
 import { demoApi, IS_DEMO } from "./demo";
-import type { Center, Exercise, ExerciseStatus, Participant } from "./types";
+import type { Center, Exercise, ExerciseStatus, Overview, Participant } from "./types";
 
 export { IS_DEMO };
 
@@ -61,6 +61,8 @@ async function downloadFile(path: string, method: "GET" | "POST" = "GET"): Promi
 }
 
 const realApi = {
+  getOverview: () => req<Overview>("/overview"),
+
   listCenters: () => req<Center[]>("/centers"),
   createCenter: (name: string) => jsonPost<Center>("/centers", { name }),
   getCenter: (id: number) => req<Center>(`/centers/${id}`),

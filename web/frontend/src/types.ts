@@ -29,3 +29,18 @@ export interface ExerciseStatus {
   levels: Record<string, LevelInfo>;
   indicator_count: number | null;
 }
+
+export interface Overview {
+  counts: {
+    centers: number;
+    participants: number;
+    exercises: number;
+    processed: number;
+    reports: number;
+  };
+  level_max: number;
+  avg_level: number;
+  measurements: number;
+  avg_by_competence: { name: string; avg: number; count: number }[];
+  level_bands: { name: string; count: number }[];
+}

@@ -3,7 +3,7 @@ import { Link } from "react-router-dom";
 import { api } from "../api";
 import type { Center } from "../types";
 
-export default function Dashboard() {
+export default function Workspace() {
   const [centers, setCenters] = useState<Center[]>([]);
   const [name, setName] = useState("");
   const [error, setError] = useState("");
@@ -36,14 +36,11 @@ export default function Dashboard() {
 
   return (
     <>
-      <div className="hero">
-        <span className="eyebrow">✦ Оценка компетенций на ИИ</span>
-        <h1>
-          Центры оценки — <span className="accent">быстро и наглядно</span>
-        </h1>
-        <p>
-          Создавайте центры и участников, загружайте аудио или готовый блокнот — система
-          расшифрует, оценит по индикаторам и соберёт отчёт с ИПР.
+      <div className="page-head">
+        <h1>Центры оценки</h1>
+        <p className="muted">
+          Центр — это один поток оценки (например, «Резерв руководителей, июль»). Внутри центра —
+          участники, у каждого участника — упражнения.
         </p>
       </div>
 
@@ -66,7 +63,9 @@ export default function Dashboard() {
 
       <div className="card">
         <h2>Список центров</h2>
-        {centers.length === 0 && <p className="muted">Пока нет центров.</p>}
+        {centers.length === 0 && (
+          <p className="muted">Пока нет центров. Создайте первый — с него начинается работа.</p>
+        )}
         <ul className="list">
           {centers.map((c) => (
             <li key={c.id}>

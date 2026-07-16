@@ -384,3 +384,461 @@ table.levels td.lvl {
   font-size: 14px;
   color: var(--muted);
 }
+
+/* ============================================================
+   Nav, sections, charts, FAQ  (site overhaul)
+   ============================================================ */
+
+/* ---- top nav ---- */
+.topbar {
+  flex-wrap: wrap;
+  gap: 12px 20px;
+}
+.mainnav {
+  display: flex;
+  gap: 4px;
+  flex: 1;
+  justify-content: center;
+  flex-wrap: wrap;
+}
+.mainnav a {
+  color: var(--muted);
+  font-weight: 600;
+  font-size: 14px;
+  padding: 8px 15px;
+  border-radius: 999px;
+  border: 1px solid transparent;
+  transition:
+    color 0.15s ease,
+    background 0.15s ease,
+    border-color 0.15s ease;
+}
+.mainnav a:hover {
+  color: var(--ink);
+  background: rgba(255, 255, 255, 0.04);
+}
+.mainnav a.active {
+  color: var(--accent);
+  background: rgba(198, 242, 78, 0.1);
+  border-color: var(--line);
+}
+
+/* ---- anchor buttons (Link styled as button) ---- */
+.btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 12px 22px;
+  border-radius: 12px;
+  background: var(--accent);
+  color: var(--accent-ink);
+  font-size: 14px;
+  font-weight: 700;
+  border: 1px solid transparent;
+  transition:
+    transform 0.12s ease,
+    box-shadow 0.15s ease,
+    background 0.15s ease;
+}
+.btn:hover {
+  color: var(--accent-ink);
+  transform: translateY(-1px);
+  box-shadow: 0 12px 30px -12px rgba(198, 242, 78, 0.7);
+}
+.btn.ghost {
+  background: transparent;
+  color: var(--ink);
+  border-color: var(--line-soft);
+}
+.btn.ghost:hover {
+  color: var(--ink);
+  border-color: var(--line);
+  background: rgba(198, 242, 78, 0.06);
+  box-shadow: none;
+}
+
+/* ---- hero extras ---- */
+.hero-cta {
+  display: flex;
+  gap: 12px;
+  justify-content: center;
+  flex-wrap: wrap;
+  margin-top: 26px;
+}
+.hero-stats {
+  display: flex;
+  gap: 28px;
+  justify-content: center;
+  flex-wrap: wrap;
+  margin-top: 30px;
+  color: var(--muted);
+  font-size: 14px;
+}
+.hero-stats b {
+  color: var(--ink);
+  font-size: 20px;
+  font-weight: 800;
+  margin-right: 5px;
+}
+
+/* ---- sections ---- */
+.section {
+  margin: 46px 0;
+}
+.section-head {
+  margin-bottom: 20px;
+}
+.section-title {
+  font-size: 13px;
+  text-transform: uppercase;
+  letter-spacing: 0.1em;
+  color: var(--accent);
+  font-weight: 700;
+  margin: 0 0 6px;
+}
+.page-head {
+  margin: 8px 0 24px;
+}
+.page-head h1 {
+  font-size: 30px;
+  letter-spacing: -0.02em;
+}
+.page-head .muted {
+  max-width: 640px;
+  margin-top: 6px;
+}
+
+/* ---- how-it-works steps ---- */
+.steps-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  gap: 16px;
+}
+.step-card {
+  position: relative;
+  background: var(--panel);
+  border: 1px solid var(--line-soft);
+  border-radius: var(--radius);
+  padding: 26px 22px 22px;
+  overflow: hidden;
+  transition:
+    transform 0.18s ease,
+    border-color 0.18s ease;
+}
+.step-card:hover {
+  transform: translateY(-3px);
+  border-color: var(--line);
+}
+.step-num {
+  font-size: 30px;
+  font-weight: 800;
+  color: var(--accent);
+  opacity: 0.85;
+  letter-spacing: -0.03em;
+}
+.step-card h3 {
+  margin: 8px 0 8px;
+  font-size: 17px;
+  letter-spacing: -0.01em;
+}
+.step-card p {
+  margin: 0;
+  font-size: 13.5px;
+}
+
+/* ---- section / nav cards ---- */
+.cards-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+  gap: 16px;
+}
+.nav-card {
+  display: block;
+  background: var(--panel);
+  border: 1px solid var(--line-soft);
+  border-radius: var(--radius);
+  padding: 24px;
+  color: var(--ink);
+  transition:
+    transform 0.18s ease,
+    border-color 0.18s ease,
+    background 0.18s ease;
+}
+.nav-card:hover {
+  transform: translateY(-3px);
+  border-color: var(--line);
+  background: rgba(198, 242, 78, 0.04);
+  color: var(--ink);
+}
+.nav-card-icon {
+  font-size: 26px;
+}
+.nav-card h3 {
+  margin: 10px 0 6px;
+  font-size: 18px;
+}
+.nav-card p {
+  margin: 0 0 14px;
+  font-size: 13.5px;
+}
+.nav-card-go {
+  color: var(--accent);
+  font-weight: 700;
+  font-size: 13.5px;
+}
+
+/* ---- stat tiles ---- */
+.stat-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+  gap: 14px;
+  margin-bottom: 18px;
+}
+.stat {
+  background: var(--panel);
+  border: 1px solid var(--line-soft);
+  border-radius: var(--radius);
+  padding: 22px;
+}
+.stat-accent {
+  border-color: var(--line);
+  background: rgba(198, 242, 78, 0.05);
+}
+.stat-value {
+  font-size: 38px;
+  font-weight: 800;
+  letter-spacing: -0.03em;
+  line-height: 1;
+  color: var(--ink);
+}
+.stat-label {
+  margin-top: 10px;
+  color: var(--muted);
+  font-size: 13px;
+  font-weight: 600;
+}
+.stat-hint {
+  margin-top: 4px;
+  color: #6b7563;
+  font-size: 12px;
+}
+
+/* ---- two-column grid ---- */
+.grid-2 {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+  gap: 18px;
+  margin-bottom: 18px;
+}
+.grid-2 .card {
+  margin-bottom: 0;
+}
+
+/* ---- horizontal bar chart ---- */
+.barlist {
+  display: grid;
+  gap: 16px;
+  margin-top: 14px;
+}
+.barrow {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  grid-template-areas:
+    "label value"
+    "track track";
+  gap: 5px 10px;
+  align-items: baseline;
+}
+.barlabel {
+  grid-area: label;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--ink);
+  line-height: 1.3;
+}
+.barvalue {
+  grid-area: value;
+  font-size: 14px;
+  font-weight: 800;
+  color: var(--accent);
+  font-variant-numeric: tabular-nums;
+}
+.bartrack {
+  grid-area: track;
+  height: 12px;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.05);
+  overflow: hidden;
+}
+.barfill {
+  height: 100%;
+  border-radius: 999px;
+  background: linear-gradient(90deg, var(--accent-2), var(--accent));
+  box-shadow: 0 0 16px -2px rgba(198, 242, 78, 0.55);
+  animation: grow-x 0.6s ease-out;
+  transition: width 0.4s ease;
+}
+@keyframes grow-x {
+  from {
+    transform: scaleX(0);
+    transform-origin: left;
+  }
+}
+
+/* ---- band distribution bar ---- */
+.bandbar {
+  margin-top: 16px;
+}
+.bandtrack {
+  display: flex;
+  gap: 2px;
+  height: 26px;
+  border-radius: 8px;
+  overflow: hidden;
+}
+.bandseg {
+  min-width: 3px;
+  transition: flex-grow 0.4s ease;
+}
+.bandseg.band-none,
+.dot.band-none {
+  background: #5a6551;
+}
+.bandseg.band-low,
+.dot.band-low {
+  background: #7a8a34;
+}
+.bandseg.band-ok,
+.dot.band-ok {
+  background: #9bd23e;
+}
+.bandseg.band-high,
+.dot.band-high {
+  background: var(--accent);
+}
+.bandlegend {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+  gap: 8px 16px;
+  margin-top: 16px;
+}
+.bandkey {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 13px;
+  color: var(--muted);
+}
+.bandkey .dot {
+  width: 10px;
+  height: 10px;
+  border-radius: 3px;
+  flex: none;
+}
+.bandkey-name {
+  flex: 1;
+}
+.bandkey-num {
+  color: var(--ink);
+  font-weight: 800;
+  font-variant-numeric: tabular-nums;
+}
+
+/* ---- gauge ---- */
+.gauge {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  margin-top: 8px;
+}
+.gauge-track {
+  fill: none;
+  stroke: rgba(255, 255, 255, 0.07);
+  stroke-width: 12;
+  stroke-linecap: round;
+}
+.gauge-fill {
+  fill: none;
+  stroke: var(--accent);
+  stroke-width: 12;
+  stroke-linecap: round;
+  filter: drop-shadow(0 0 6px rgba(198, 242, 78, 0.6));
+}
+.gauge-num {
+  fill: var(--ink);
+  font-size: 34px;
+  font-weight: 800;
+  text-anchor: middle;
+}
+.gauge-max {
+  fill: var(--muted);
+  font-size: 12px;
+  text-anchor: middle;
+}
+.gauge-caption {
+  margin-top: 8px;
+  color: var(--muted);
+  font-size: 13px;
+  text-align: center;
+  max-width: 220px;
+}
+
+/* ---- FAQ accordion ---- */
+.faq {
+  display: grid;
+  gap: 10px;
+}
+.faq-item {
+  background: var(--panel);
+  border: 1px solid var(--line-soft);
+  border-radius: 14px;
+  overflow: hidden;
+  transition: border-color 0.15s ease;
+}
+.faq-item.open {
+  border-color: var(--line);
+}
+.faq-q {
+  width: 100%;
+  text-align: left;
+  background: transparent;
+  color: var(--ink);
+  border: none;
+  border-radius: 0;
+  padding: 18px 20px;
+  font-size: 15px;
+  font-weight: 700;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 14px;
+  cursor: pointer;
+}
+.faq-q:hover:not(:disabled) {
+  transform: none;
+  box-shadow: none;
+  color: var(--accent);
+}
+.faq-mark {
+  color: var(--accent);
+  font-size: 22px;
+  font-weight: 700;
+  flex: none;
+  line-height: 1;
+}
+.faq-a {
+  padding: 0 20px 20px;
+  color: var(--muted);
+  font-size: 14px;
+  line-height: 1.65;
+}
+
+/* ---- footer ---- */
+.footer {
+  text-align: center;
+  color: #5f6a58;
+  font-size: 12.5px;
+  padding: 30px 18px 40px;
+  border-top: 1px solid var(--line-soft);
+  margin-top: 20px;
+}
