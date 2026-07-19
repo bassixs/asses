@@ -5,12 +5,56 @@ import { Pipeline } from "../components/Pipeline";
 import { Reveal, useCountUp } from "../components/Reveal";
 import type { Overview } from "../types";
 
-const SECTIONS = [
-  { to: "/exercises", icon: "🎯", title: "Упражнения", text: "Каталог: материалы, блокнот и проверка понимания ИИ. Отсюда упражнения попадают в оценку." },
-  { to: "/workspace", icon: "🗂", title: "Центры", text: "Рабочее пространство: центры, участники и проведение оценки." },
-  { to: "/analytics", icon: "📈", title: "Аналитика", text: "Метрики по всем центрам: средние уровни компетенций и распределение оценок." },
-  { to: "/faq", icon: "💬", title: "Вопросы и ответы", text: "Как считаются уровни, какие форматы файлов, что с приватностью и точностью." },
-];
+/* Иконки — тонкий контур в акцентном цвете. Эмодзи здесь выбивались:
+   каждый в своей манере и своей палитре, мимо стиля страницы. */
+const ICONS: Record<string, JSX.Element> = {
+  target: (
+    <>
+      <circle cx="12" cy="12" r="8" />
+      <circle cx="12" cy="12" r="3.5" />
+      <path d="M12 1.5v3M12 19.5v3M1.5 12h3M19.5 12h3" />
+    </>
+  ),
+  folder: (
+    <>
+      <path d="M3 7.5A1.5 1.5 0 0 1 4.5 6h4l2 2.5h7A1.5 1.5 0 0 1 19 10v7.5A1.5 1.5 0 0 1 17.5 19h-13A1.5 1.5 0 0 1 3 17.5z" />
+      <path d="M3 11h16" />
+    </>
+  ),
+  chart: (
+    <>
+      <path d="M4 20V4M4 20h16" />
+      <path d="M8 20v-6M12.5 20V9M17 20v-9" />
+    </>
+  ),
+  help: (
+    <>
+      <path d="M4 5.5A1.5 1.5 0 0 1 5.5 4h13A1.5 1.5 0 0 1 20 5.5v9a1.5 1.5 0 0 1-1.5 1.5H9l-5 4z" />
+      <path d="M9.8 8.6a2.3 2.3 0 1 1 2.9 2.6v1.3" />
+      <path d="M12.7 15.1h.01" />
+    </>
+  ),
+};
+
+/** Склонение существительного по числу: plural(3, ["центр","центра","центров"]) → "центра". */
+function plural(n: number, forms: [string, string, string]): string {
+  const mod100 = Math.abs(n) % 100;
+  const mod10 = mod100 % 10;
+  if (mod100 >= 11 && mod100 <= 14) return forms[2];
+  if (mod10 === 1) return forms[0];
+  if (mod10 >= 2 && mod10 <= 4) return forms[1];
+  return forms[2];
+}
+
+function Icon({ name }: { name: string }) {
+  return (
+    <span className="nc-icon" aria-hidden="true">
+      <svg viewBox="0 0 24 24" fill="none" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round">
+        {ICONS[name]}
+      </svg>
+    </span>
+  );
+}
 
 const CLAIMS = [
   {
@@ -152,17 +196,85 @@ export default function Home() {
 
       <Reveal className="section">
         <div className="section-head">
-          <h2 className="section-title">Разделы</h2>
+          <h2 className="section-title">Куда дальше</h2>
+          <p className="muted">Текущее состояние системы — и переход туда, где нужно ваше участие.</p>
         </div>
-        <div className="cards-grid">
-          {SECTIONS.map((s) => (
-            <Link className="nav-card" to={s.to} key={s.to}>
-              <span className="nav-card-icon">{s.icon}</span>
-              <h3>{s.title}</h3>
-              <p className="muted">{s.text}</p>
-              <span className="nav-card-go">Открыть →</span>
-            </Link>
-          ))}
+        <div className="next-grid">
+          <Link className="next-card" to="/exercises">
+            <Icon name="target" />
+            <h3>Упражнения</h3>
+            <div className="nc-stat">
+              {ov ? (
+                <>
+                  <b>{ov.catalog.usable}</b> из {ov.catalog.total}{" "}
+                  {plural(ov.catalog.usable, ["готово", "готовы", "готовы"])} к оценке
+                  {ov.catalog.needs_notebook > 0 && (
+                    <span className="nc-warn">
+                      {" "}
+                      · {ov.catalog.needs_notebook}{" "}
+                      {plural(ov.catalog.needs_notebook, ["ждёт", "ждут", "ждут"])} блокнота
+                    </span>
+                  )}
+                </>
+              ) : (
+                "каталог упражнений"
+              )}
+            </div>
+            <p className="muted">
+              Материалы, блокнот и проверка понимания ИИ. Отсюда упражнения попадают в оценку.
+            </p>
+            <span className="nc-go">Открыть каталог</span>
+          </Link>
+
+          <Link className="next-card" to="/workspace">
+            <Icon name="folder" />
+            <h3>Центры</h3>
+            <div className="nc-stat">
+              {ov ? (
+                <>
+                  <b>{ov.counts.centers}</b> {plural(ov.counts.centers, ["центр", "центра", "центров"])}{" "}
+                  · <b>{ov.counts.participants}</b>{" "}
+                  {plural(ov.counts.participants, ["участник", "участника", "участников"])}
+                </>
+              ) : (
+                "рабочее пространство"
+              )}
+            </div>
+            <p className="muted">
+              Создание центров и участников, загрузка записей, проведение оценки.
+            </p>
+            <span className="nc-go">Перейти к оценке</span>
+          </Link>
+
+          <Link className="next-card" to="/analytics">
+            <Icon name="chart" />
+            <h3>Аналитика</h3>
+            <div className="nc-stat">
+              {ov ? (
+                <>
+                  <b>{ov.counts.processed}</b>{" "}
+                  {plural(ov.counts.processed, ["упражнение", "упражнения", "упражнений"])} обработано
+                  {ov.measurements > 0 && <> · средний уровень <b>{ov.avg_level}</b></>}
+                </>
+              ) : (
+                "метрики по всем центрам"
+              )}
+            </div>
+            <p className="muted">
+              Средние уровни компетенций, распределение оценок и разрез по центрам.
+            </p>
+            <span className="nc-go">Смотреть метрики</span>
+          </Link>
+
+          <Link className="next-card" to="/faq">
+            <Icon name="help" />
+            <h3>Вопросы и ответы</h3>
+            <div className="nc-stat">как всё устроено</div>
+            <p className="muted">
+              Как считаются уровни, что такое «НЗ», какие форматы файлов, что с приватностью.
+            </p>
+            <span className="nc-go">Читать ответы</span>
+          </Link>
         </div>
       </Reveal>
     </>

@@ -1794,6 +1794,115 @@ button.danger:hover:not(:disabled) {
   color: var(--muted);
 }
 
+/* ---- «Куда дальше» ---- */
+.next-grid {
+  /* Ровно две колонки: при auto-fit четвёртая карточка оставалась сиротой в ряду. */
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 16px;
+}
+@media (max-width: 720px) {
+  .next-grid {
+    grid-template-columns: 1fr;
+  }
+}
+.next-card {
+  position: relative;
+  display: block;
+  padding: 26px 24px 24px;
+  border-radius: var(--radius);
+  border: 1px solid var(--line-soft);
+  background: var(--panel);
+  color: var(--ink);
+  overflow: hidden;
+  transition:
+    transform 0.2s ease,
+    border-color 0.2s ease;
+}
+/* Мягкое свечение из левого верхнего угла — проявляется при наведении */
+.next-card::before {
+  content: "";
+  position: absolute;
+  top: -60px;
+  left: -60px;
+  width: 200px;
+  height: 200px;
+  background: radial-gradient(circle, rgba(198, 242, 78, 0.16), transparent 70%);
+  opacity: 0;
+  transition: opacity 0.25s ease;
+  pointer-events: none;
+}
+.next-card:hover {
+  transform: translateY(-3px);
+  border-color: var(--line);
+  color: var(--ink);
+}
+.next-card:hover::before {
+  opacity: 1;
+}
+
+.nc-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 44px;
+  height: 44px;
+  border-radius: 13px;
+  border: 1px solid var(--line);
+  background: rgba(198, 242, 78, 0.08);
+  margin-bottom: 16px;
+  transition:
+    background 0.25s ease,
+    box-shadow 0.25s ease;
+}
+.nc-icon svg {
+  width: 22px;
+  height: 22px;
+  stroke: var(--accent);
+}
+.next-card:hover .nc-icon {
+  background: rgba(198, 242, 78, 0.16);
+  box-shadow: 0 0 20px -4px rgba(198, 242, 78, 0.55);
+}
+
+.next-card h3 {
+  margin: 0 0 8px;
+  font-size: 18px;
+  letter-spacing: -0.01em;
+}
+.nc-stat {
+  font-size: 13px;
+  color: var(--muted);
+  margin-bottom: 10px;
+}
+.nc-stat b {
+  color: var(--accent);
+  font-weight: 800;
+  font-size: 15px;
+}
+.nc-warn {
+  color: #e8c65a;
+}
+.next-card p {
+  margin: 0 0 16px;
+  font-size: 13.5px;
+}
+.nc-go {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  color: var(--accent);
+  font-weight: 700;
+  font-size: 13.5px;
+}
+.nc-go::after {
+  content: "→";
+  transition: transform 0.2s ease;
+}
+.next-card:hover .nc-go::after {
+  transform: translateX(4px);
+}
+
 /* ---- claims ---- */
 .claims {
   display: grid;
