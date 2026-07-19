@@ -36,12 +36,27 @@ async def exercise_status(exercise_id: int, session: AsyncSession = Depends(get_
     status = jobs.get_status(exercise_id)
     if fill is not None and status["stage"] not in {"processing"}:
         status = {"stage": "done", "message": "Готово"}
+
+    data = (fill.result_json or {}) if fill else {}
+    # Breakdown by indicator status, so the page can show what the assessment actually found
+    # instead of just "готово".
+    counts = {"+": 0, "-": 0, "НЗ": 0}
+    for item in data.get("results") or []:
+        raw = str((item or {}).get("status") or "").strip()
+        key = "-" if raw in {"-", "−", "–"} else raw
+        if key in counts:
+            counts[key] += 1
+
     return {
         "stage": status["stage"],
         "message": status["message"],
         "has_result": fill is not None,
-        "levels": (fill.result_json or {}).get("levels", {}) if fill else {},
-        "indicator_count": (fill.result_json or {}).get("indicator_count") if fill else None,
+        "levels": data.get("levels", {}),
+        "indicator_count": data.get("indicator_count"),
+        "assessed_at": fill.created_at if fill else None,
+        "source": "audio" if (fill and fill.record_id) else ("manual" if fill else None),
+        "counts": counts if fill else None,
+        "summary": data.get("participant_summary") or None,
     }
 
 

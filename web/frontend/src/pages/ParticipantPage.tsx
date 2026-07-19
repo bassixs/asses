@@ -57,6 +57,10 @@ export default function ParticipantPage() {
     }
   };
 
+  // Скачивать нечего, пока отчёт не собран; собирать нечего, пока нет оценённых упражнений.
+  const canReport = (part?.processed_count ?? 0) > 0;
+  const hasReport = Boolean(part?.has_report);
+
   const report = async () => {
     setBusy(true);
     setError("");
@@ -114,8 +118,18 @@ export default function ParticipantPage() {
           {exercises.map((e) => (
             <li key={e.id}>
               <Link className="row-link" to={`/assessments/${e.id}`}>
-                <span>{e.name}</span>
+                <span className="li-main">
+                  {e.name}
+                  <span className="li-sub muted">
+                    {e.has_result ? "оценено" : "ожидает загрузки записи или блокнота"}
+                  </span>
+                </span>
                 <span className="row-actions">
+                  {e.has_result ? (
+                    <span className="badge ok">✓ оценено</span>
+                  ) : (
+                    <span className="badge draft">не оценено</span>
+                  )}
                   <ConfirmDelete
                     busy={busy}
                     what={`упражнение «${e.name}» и его результат`}
@@ -131,18 +145,48 @@ export default function ParticipantPage() {
 
       <div className="card">
         <h2>Отчёт и ИПР</h2>
-        <p className="muted">Собирается по всем обработанным упражнениям участника.</p>
+        <p className="muted">
+          Собирается по всем оценённым упражнениям участника — сейчас их{" "}
+          {part?.processed_count ?? 0} из {exercises.length}.
+        </p>
+
+        {!canReport && (
+          <p className="muted">
+            Сначала оцените хотя бы одно упражнение: загрузите аудио или заполненный блокнот.
+          </p>
+        )}
+        {canReport && !hasReport && (
+          <p className="muted">
+            Упражнения оценены — можно собирать отчёт. Скачивание откроется после этого.
+          </p>
+        )}
+
         <div className="row" style={{ marginTop: 8 }}>
-          <button onClick={report} disabled={busy}>
-            Сформировать отчёт
+          <button onClick={report} disabled={busy || !canReport}>
+            {hasReport ? "Пересобрать отчёт" : "Сформировать отчёт"}
           </button>
-          <button className="ghost" onClick={() => dl(() => api.downloadReport(pid, "docx"))}>
+          <button
+            className={hasReport ? "" : "ghost"}
+            disabled={!hasReport}
+            title={hasReport ? "" : "Сначала сформируйте отчёт"}
+            onClick={() => dl(() => api.downloadReport(pid, "docx"))}
+          >
             Скачать DOCX
           </button>
-          <button className="ghost" onClick={() => dl(() => api.downloadReport(pid, "pptx"))}>
+          <button
+            className={hasReport ? "" : "ghost"}
+            disabled={!hasReport}
+            title={hasReport ? "" : "Сначала сформируйте отчёт"}
+            onClick={() => dl(() => api.downloadReport(pid, "pptx"))}
+          >
             Скачать PPTX
           </button>
-          <button className="ghost" onClick={() => dl(() => api.downloadIpr(pid))}>
+          <button
+            className={hasReport ? "" : "ghost"}
+            disabled={!hasReport}
+            title={hasReport ? "" : "Сначала сформируйте отчёт"}
+            onClick={() => dl(() => api.downloadIpr(pid))}
+          >
             Скачать ИПР
           </button>
         </div>

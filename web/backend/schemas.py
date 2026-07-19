@@ -28,6 +28,9 @@ class ParticipantOut(BaseModel):
     id: int
     code: str
     center_id: int
+    # Drives the download buttons: nothing to download until a report exists.
+    has_report: bool = False
+    processed_count: int = 0
 
 
 class ExerciseCreate(BaseModel):
@@ -45,3 +48,4 @@ class ExerciseOut(BaseModel):
     has_instructions: bool = False
     template_id: int | None = None
     notebook_indicator_count: int | None = None
+    has_result: bool = False

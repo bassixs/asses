@@ -49,12 +49,12 @@ const centers: Center[] = [
   },
 ];
 const participants: Participant[] = [
-  { id: 1, code: "AC-001", center_id: 1 },
-  { id: 2, code: "№2", center_id: 1 },
+  { id: 1, code: "AC-001", center_id: 1, has_report: true, processed_count: 1 },
+  { id: 2, code: "№2", center_id: 1, has_report: false, processed_count: 0 },
 ];
 const exercises: Exercise[] = [
-  { id: 1, name: "Беседа с сотрудником", participant_id: 1, center_id: 1, has_instructions: true },
-  { id: 2, name: "Планирование", participant_id: 1, center_id: 1, has_instructions: false },
+  { id: 1, name: "Беседа с сотрудником", participant_id: 1, center_id: 1, has_instructions: true, has_result: true },
+  { id: 2, name: "Планирование", participant_id: 1, center_id: 1, has_instructions: false, has_result: false },
 ];
 
 const doneLevels = {
@@ -66,7 +66,18 @@ const doneLevels = {
 };
 
 const statuses = new Map<number, ExerciseStatus>();
-statuses.set(1, { stage: "done", message: "Готово", has_result: true, levels: doneLevels, indicator_count: 89 });
+statuses.set(1, {
+  stage: "done",
+  message: "Готово",
+  has_result: true,
+  levels: doneLevels,
+  indicator_count: 89,
+  assessed_at: new Date(Date.now() - 3600_000 * 5).toISOString(),
+  source: "audio",
+  counts: { "+": 38, "-": 27, "НЗ": 24 },
+  summary:
+    "Участник структурно ведёт беседу и фиксирует договорённости, но избегает работы с возражением: при сопротивлении сотрудника переходит к давлению вместо выяснения причин.",
+});
 
 const idle = (): ExerciseStatus => ({ stage: "idle", message: "", has_result: false, levels: {}, indicator_count: null });
 

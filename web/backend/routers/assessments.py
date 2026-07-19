@@ -11,6 +11,7 @@ from bot.models import (
     NotebookFillResult,
     ObserverNotebook,
     Participant,
+    ParticipantReport,
 )
 from bot.services.exercise_understanding import render_understanding_brief
 from web.backend.deps import WEB_OWNER_ID, get_session
@@ -27,11 +28,34 @@ from web.backend.schemas import (
 router = APIRouter(tags=["assessments"])
 
 
-def _participant_out(participant: Participant) -> ParticipantOut:
-    return ParticipantOut(id=participant.id, code=participant.full_name, center_id=participant.center_id)
+def _participant_out(
+    participant: Participant, *, has_report: bool = False, processed: int = 0
+) -> ParticipantOut:
+    return ParticipantOut(
+        id=participant.id,
+        code=participant.full_name,
+        center_id=participant.center_id,
+        has_report=has_report,
+        processed_count=processed,
+    )
 
 
-def _exercise_out(exercise: Exercise, indicator_count: int | None = None) -> ExerciseOut:
+async def _participant_state(participant_id: int, session: AsyncSession) -> tuple[bool, int]:
+    """Whether a report was built, and how many exercises are already assessed."""
+    report_id = await session.scalar(
+        select(ParticipantReport.id).where(ParticipantReport.participant_id == participant_id).limit(1)
+    )
+    processed = await session.scalar(
+        select(func.count(func.distinct(NotebookFillResult.exercise_id)))
+        .join(Exercise, NotebookFillResult.exercise_id == Exercise.id)
+        .where(Exercise.participant_id == participant_id)
+    )
+    return report_id is not None, processed or 0
+
+
+def _exercise_out(
+    exercise: Exercise, indicator_count: int | None = None, *, has_result: bool = False
+) -> ExerciseOut:
     return ExerciseOut(
         id=exercise.id,
         name=exercise.name,
@@ -40,6 +64,7 @@ def _exercise_out(exercise: Exercise, indicator_count: int | None = None) -> Exe
         has_instructions=bool(exercise.instructions_text),
         template_id=exercise.template_id,
         notebook_indicator_count=indicator_count,
+        has_result=has_result,
     )
 
 
@@ -171,7 +196,8 @@ async def get_participant(participant_id: int, session: AsyncSession = Depends(g
     participant = await session.get(Participant, participant_id)
     if participant is None:
         raise HTTPException(status_code=404, detail="Участник не найден")
-    return _participant_out(participant)
+    has_report, processed = await _participant_state(participant_id, session)
+    return _participant_out(participant, has_report=has_report, processed=processed)
 
 
 # ---- exercises -----------------------------------------------------------------------------
@@ -227,10 +253,19 @@ async def create_exercise(payload: ExerciseCreate, session: AsyncSession = Depen
 
 @router.get("/participants/{participant_id}/exercises", response_model=list[ExerciseOut])
 async def list_exercises(participant_id: int, session: AsyncSession = Depends(get_session)) -> list[ExerciseOut]:
-    rows = await session.scalars(
-        select(Exercise).where(Exercise.participant_id == participant_id).order_by(Exercise.id)
+    rows = list(
+        await session.scalars(
+            select(Exercise).where(Exercise.participant_id == participant_id).order_by(Exercise.id)
+        )
     )
-    return [_exercise_out(e) for e in rows]
+    assessed = set(
+        await session.scalars(
+            select(NotebookFillResult.exercise_id).where(
+                NotebookFillResult.exercise_id.in_([e.id for e in rows] or [0])
+            )
+        )
+    )
+    return [_exercise_out(e, has_result=e.id in assessed) for e in rows]
 
 
 @router.get("/exercises/{exercise_id}", response_model=ExerciseOut)

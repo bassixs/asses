@@ -11,6 +11,8 @@ export interface Participant {
   id: number;
   code: string;
   center_id: number;
+  has_report?: boolean;
+  processed_count?: number;
 }
 
 export interface Exercise {
@@ -21,6 +23,7 @@ export interface Exercise {
   has_instructions: boolean;
   template_id?: number | null;
   notebook_indicator_count?: number | null;
+  has_result?: boolean;
 }
 
 export interface Understanding {
@@ -74,6 +77,10 @@ export interface ExerciseStatus {
   has_result: boolean;
   levels: Record<string, LevelInfo>;
   indicator_count: number | null;
+  assessed_at?: string | null;
+  source?: "audio" | "manual" | null;
+  counts?: { "+": number; "-": number; "НЗ": number } | null;
+  summary?: string | null;
 }
 
 export interface Overview {

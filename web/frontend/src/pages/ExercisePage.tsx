@@ -139,30 +139,79 @@ export default function ExercisePage() {
 
       {status && status.stage !== "idle" && (
         <div className="card">
-          <h2>Результат</h2>
+          <h2>Результат оценки</h2>
           <p className="muted">
             Статус: {stageText}
             {status.message ? ` — ${status.message}` : ""}
           </p>
+
+          {done && (
+            <div className="assess-meta">
+              {status.assessed_at && (
+                <span>
+                  Оценено {new Date(status.assessed_at).toLocaleString("ru-RU", {
+                    day: "2-digit", month: "2-digit", year: "numeric",
+                    hour: "2-digit", minute: "2-digit",
+                  })}
+                </span>
+              )}
+              {status.source && (
+                <span>{status.source === "audio" ? "по аудиозаписи" : "по заполненному блокноту"}</span>
+              )}
+              {status.indicator_count != null && <span>индикаторов: {status.indicator_count}</span>}
+            </div>
+          )}
+
+          {done && status.counts && (
+            <div className="counts-row">
+              <div className="count yes">
+                <b>{status.counts["+"]}</b>
+                <span>проявлено</span>
+              </div>
+              <div className="count no">
+                <b>{status.counts["-"]}</b>
+                <span>не проявлено</span>
+              </div>
+              <div className="count nz">
+                <b>{status.counts["НЗ"]}</b>
+                <span>не замерялось</span>
+              </div>
+            </div>
+          )}
+
+          {done && status.summary && (
+            <div className="u-block">
+              <h4>Краткий вывод</h4>
+              <p className="muted">{status.summary}</p>
+            </div>
+          )}
           {done && (
             <>
               {Object.keys(levels).length > 0 && (
-                <table className="levels">
-                  <tbody>
-                    {Object.entries(levels).map(([name, l]) => (
-                      <tr key={name}>
-                        <td>{name}</td>
-                        <td className="lvl">{l.level}</td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
+                <div className="u-block">
+                  <h4>Уровни компетенций по этому упражнению</h4>
+                  <table className="levels">
+                    <tbody>
+                      {Object.entries(levels).map(([name, l]) => (
+                        <tr key={name}>
+                          <td>{name}</td>
+                          <td className="lvl">{l.level}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
               )}
-              <div className="row" style={{ marginTop: 12 }}>
-                <button className="ghost" onClick={() => api.downloadFilledNotebook(exId).catch((e: any) => setError(e.message))}>
+              <div className="row" style={{ marginTop: 14 }}>
+                <button onClick={() => api.downloadFilledNotebook(exId).catch((e: any) => setError(e.message))}>
                   Скачать заполненный блокнот
                 </button>
               </div>
+              <p className="muted" style={{ marginTop: 12 }}>
+                Отчёт участника и ИПР собираются не по одному упражнению, а по всем сразу —
+                поэтому они на странице участника.{" "}
+                {ex && <Link to={`/participants/${ex.participant_id}`}>Перейти к отчёту →</Link>}
+              </p>
             </>
           )}
         </div>

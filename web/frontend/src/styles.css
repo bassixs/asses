@@ -1050,6 +1050,56 @@ select option {
   font-size: 13px;
 }
 
+/* ---- итог оценки упражнения ---- */
+.assess-meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px 18px;
+  margin: 12px 0 4px;
+  color: var(--muted);
+  font-size: 13px;
+}
+.assess-meta span::before {
+  content: "· ";
+  color: var(--line);
+}
+.assess-meta span:first-child::before {
+  content: "";
+}
+.counts-row {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 10px;
+  margin-top: 14px;
+}
+.count {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 14px 16px;
+  border-radius: 14px;
+  border: 1px solid var(--line-soft);
+  background: rgba(255, 255, 255, 0.02);
+}
+.count b {
+  font-size: 24px;
+  font-weight: 800;
+  line-height: 1;
+}
+.count span {
+  color: var(--muted);
+  font-size: 12px;
+}
+.count.yes b {
+  color: var(--accent);
+}
+.count.no b {
+  color: var(--err);
+}
+.count.nz b {
+  color: var(--muted);
+}
+
 /* ---- материалы: правка и лимит ---- */
 .file-right {
   display: inline-flex;
