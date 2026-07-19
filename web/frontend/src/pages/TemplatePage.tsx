@@ -35,6 +35,7 @@ export default function TemplatePage() {
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
   const [checking, setChecking] = useState(false);
+  const [progress, setProgress] = useState("");
 
   useEffect(() => {
     api.getTemplate(tid).then(setT).catch((e: any) => setError(e.message));
@@ -48,6 +49,29 @@ export default function TemplatePage() {
     } catch (e: any) {
       setError(e.message);
     } finally {
+      setBusy(false);
+    }
+  };
+
+  /** Upload materials one after another — each appends to the exercise's text,
+   *  so they must not race. A failure mid-way keeps the files already accepted. */
+  const uploadMaterials = async (files: File[]) => {
+    setBusy(true);
+    setError("");
+    let latest: ExerciseTemplate | null = null;
+    try {
+      for (let i = 0; i < files.length; i++) {
+        setProgress(files.length > 1 ? `Загружаю ${i + 1} из ${files.length}: ${files[i].name}` : "");
+        try {
+          latest = await api.uploadTemplateMaterial(tid, files[i]);
+        } catch (e: any) {
+          setError(`«${files[i].name}»: ${e.message}`);
+          break;
+        }
+      }
+    } finally {
+      if (latest) setT(latest);
+      setProgress("");
       setBusy(false);
     }
   };
@@ -94,7 +118,7 @@ export default function TemplatePage() {
           <h2>1. Материалы упражнения</h2>
           <p className="muted">
             Инструкции ведущего, наблюдателя, участника, методички. PDF, DOCX, TXT или MD.
-            Можно приложить несколько файлов.
+            Можно выбрать сразу несколько файлов — или добавлять их по одному, они накапливаются.
           </p>
           {t.materials && t.materials.length > 0 && (
             <ul className="file-list">
@@ -109,12 +133,15 @@ export default function TemplatePage() {
           <input
             type="file"
             accept=".pdf,.docx,.txt,.md"
+            multiple
             disabled={busy}
             onChange={(e) => {
-              const f = e.target.files?.[0];
-              if (f) wrap(() => api.uploadTemplateMaterial(tid, f));
+              const files = Array.from(e.target.files ?? []);
+              e.target.value = ""; // чтобы можно было выбрать тот же файл повторно
+              if (files.length) uploadMaterials(files);
             }}
           />
+          {progress && <div className="ok">{progress}</div>}
         </div>
 
         <div className="step">
