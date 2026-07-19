@@ -174,6 +174,11 @@ class Settings(BaseSettings):
     libreoffice_binary: str = Field(default="soffice", validation_alias="LIBREOFFICE_BINARY")
     pdf_export_timeout_seconds: int = Field(default=120, validation_alias="PDF_EXPORT_TIMEOUT_SECONDS")
     admin_bot_password: str = Field(default="1172", validation_alias="ADMIN_BOT_PASSWORD")
+    # Web sign-in. The password falls back to ADMIN_BOT_PASSWORD when WEB_PASSWORD is unset.
+    web_login: str = Field(default="HR40", validation_alias="WEB_LOGIN")
+    web_password: str = Field(default="", validation_alias="WEB_PASSWORD")
+    # Signing key for session cookies. Generated and persisted next to the DB when unset.
+    session_secret: str = Field(default="", validation_alias="SESSION_SECRET")
     competencies: list[str] = Field(default_factory=lambda: DEFAULT_COMPETENCIES.copy())
 
     model_config = SettingsConfigDict(

@@ -13,6 +13,15 @@ export { IS_DEMO };
 
 const BASE = "/api";
 
+/** Error carrying the HTTP status, so callers can tell "not signed in" from a real failure. */
+export class ApiError extends Error {
+  status: number;
+  constructor(message: string, status: number) {
+    super(message);
+    this.status = status;
+  }
+}
+
 async function req<T>(path: string, opts?: RequestInit): Promise<T> {
   const res = await fetch(BASE + path, opts);
   if (!res.ok) {
@@ -23,7 +32,7 @@ async function req<T>(path: string, opts?: RequestInit): Promise<T> {
     } catch {
       /* ignore non-JSON errors */
     }
-    throw new Error(detail);
+    throw new ApiError(detail, res.status);
   }
   return (await res.json()) as T;
 }
@@ -69,6 +78,11 @@ async function downloadFile(path: string, method: "GET" | "POST" = "GET"): Promi
 }
 
 const realApi = {
+  login: (username: string, password: string) =>
+    jsonPost<{ ok: boolean; username: string }>("/auth/login", { username, password }),
+  logout: () => jsonPost<{ ok: boolean }>("/auth/logout", {}),
+  me: () => req<{ authenticated: boolean; username: string }>("/auth/me"),
+
   getOverview: () => req<Overview>("/overview"),
 
   getStorage: () => req<Storage>("/storage"),

@@ -1,5 +1,7 @@
+import { useEffect, useState } from "react";
 import { BrowserRouter, Link, NavLink, Route, Routes } from "react-router-dom";
-import { IS_DEMO } from "./api";
+import { api, IS_DEMO } from "./api";
+import Login from "./pages/Login";
 import Home from "./pages/Home";
 import Workspace from "./pages/Workspace";
 import Analytics from "./pages/Analytics";
@@ -22,6 +24,30 @@ const NAV = [
 ];
 
 export default function App() {
+  // null = ещё проверяем сессию, чтобы не мигать формой входа у вошедшего пользователя
+  const [authed, setAuthed] = useState<boolean | null>(null);
+
+  const check = () =>
+    api
+      .me()
+      .then(() => setAuthed(true))
+      .catch(() => setAuthed(false));
+
+  useEffect(() => {
+    check();
+  }, []);
+
+  const logout = async () => {
+    try {
+      await api.logout();
+    } finally {
+      setAuthed(false);
+    }
+  };
+
+  if (authed === null) return <div className="boot">Загрузка…</div>;
+  if (!authed) return <Login onSuccess={() => setAuthed(true)} />;
+
   return (
     <BrowserRouter basename={basename}>
       <header className="topbar">
@@ -36,7 +62,14 @@ export default function App() {
             </NavLink>
           ))}
         </nav>
-        <span className="tag">HR-инструмент</span>
+        <span className="topbar-right">
+          <span className="tag">HR-инструмент</span>
+          {!IS_DEMO && (
+            <button className="logout" onClick={logout} title="Выйти из системы">
+              Выйти
+            </button>
+          )}
+        </span>
       </header>
       {IS_DEMO && (
         <div className="demo-banner">

@@ -209,6 +209,20 @@ let demoStorage = {
 };
 
 export const demoApi = {
+  // Витрина без бэкенда — вход не требуется.
+  async login(username: string) {
+    await sleep(200);
+    return { ok: true, username };
+  },
+  async logout() {
+    await sleep(100);
+    return { ok: true };
+  },
+  async me() {
+    await sleep(100);
+    return { authenticated: true, username: "демо" };
+  },
+
   async getStorage() {
     await sleep(250);
     return { ...demoStorage };

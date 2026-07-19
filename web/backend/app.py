@@ -1,17 +1,23 @@
 from __future__ import annotations
 
-import base64
 import logging
-import secrets
 from pathlib import Path
 
 from fastapi import FastAPI, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import FileResponse, Response
+from fastapi.responses import FileResponse, JSONResponse
 
-from bot.config import settings
 from bot.database import init_db
-from web.backend.routers import assessments, files, maintenance, overview, reports, templates
+from web.backend.auth import COOKIE_NAME, auth_required, verify_token
+from web.backend.routers import (
+    assessments,
+    auth,
+    files,
+    maintenance,
+    overview,
+    reports,
+    templates,
+)
 from web.backend.seed import seed_builtin_templates
 
 _DIST = Path(__file__).resolve().parent.parent / "frontend" / "dist"
@@ -28,28 +34,29 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+# Endpoints reachable without a session: signing in, checking whether we are signed in,
+# and the health probe. Everything else under /api needs a valid session cookie.
+_PUBLIC_API = {"/api/auth/login", "/api/auth/logout", "/api/auth/me", "/api/health"}
+
+
 @app.middleware("http")
-async def basic_auth(request: Request, call_next):
-    """Protect the whole site with HTTP Basic (any user, password = ADMIN_BOT_PASSWORD).
+async def session_auth(request: Request, call_next):
+    """Gate the API behind a signed session cookie.
 
-    Disabled when the password is empty. The browser prompts once and reuses the header.
+    The SPA shell (HTML/JS/CSS) is served publicly so the sign-in page can load; it
+    carries no data of its own. Every endpoint that returns or changes data is protected.
+    Disabled entirely when no password is configured.
     """
-    password = settings.admin_bot_password
-    if not password:
+    path = request.url.path
+    if not auth_required() or not path.startswith("/api/") or path in _PUBLIC_API:
         return await call_next(request)
-    header = request.headers.get("authorization", "")
-    authorized = False
-    if header.startswith("Basic "):
-        try:
-            _, _, supplied = base64.b64decode(header[6:]).decode("utf-8").partition(":")
-            authorized = secrets.compare_digest(supplied, password)
-        except Exception:  # noqa: BLE001 - malformed header → unauthorized
-            authorized = False
-    if not authorized:
-        return Response(status_code=401, headers={"WWW-Authenticate": 'Basic realm="Assessment"'})
-    return await call_next(request)
+
+    if verify_token(request.cookies.get(COOKIE_NAME)):
+        return await call_next(request)
+    return JSONResponse({"detail": "Не выполнен вход"}, status_code=401)
 
 
+app.include_router(auth.router, prefix="/api")
 app.include_router(assessments.router, prefix="/api")
 app.include_router(files.router, prefix="/api")
 app.include_router(maintenance.router, prefix="/api")
