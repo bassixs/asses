@@ -1,4 +1,12 @@
-import type { Center, Exercise, ExerciseStatus, Overview, Participant } from "./types";
+import type {
+  Center,
+  Exercise,
+  ExerciseStatus,
+  ExerciseTemplate,
+  Overview,
+  Participant,
+  Understanding,
+} from "./types";
 
 /**
  * Демо-режим: включается на GitHub Pages (нет бэкенда) или по ?demo=1.
@@ -61,7 +69,185 @@ const demoOverview: Overview = {
   ],
 };
 
+const demoUnderstanding: Understanding = {
+  summary:
+    "Оцениваемый участник играет недавно назначенного руководителя филиала и проводит встречу с подчинённой: ставит задачу, обсуждает сроки и разбирает возражения.",
+  format: "индивидуальное",
+  participant_role: "Руководитель филиала, проводящий беседу с сотрудником",
+  facilitator_role: "Ролевой игрок — подчинённая Марина, мягко сопротивляется задаче",
+  expected_situations: [
+    "Постановка задачи с неочевидными сроками",
+    "Возражение сотрудника и необходимость аргументации",
+    "Договорённость о контрольных точках",
+  ],
+  competencies_covered: [
+    "ЭФФЕКТИВНАЯ КОММУНИКАЦИЯ",
+    "ЭФФЕКТИВНАЯ ОРГАНИЗАЦИЯ",
+    "ОРИЕНТАЦИЯ НА РЕЗУЛЬТАТ",
+  ],
+  not_observable: ["Индикаторы про публичные выступления — упражнение их не создаёт"],
+  nz_guidance:
+    "«НЗ» ставим, если ситуация для индикатора не возникла: например, конфликт не был спровоцирован ролевым игроком.",
+  gaps: [],
+  understood: true,
+  understood_reason:
+    "Материалов достаточно: понятны роли, сценарий встречи и какие компетенции замеряются блокнотом.",
+};
+
+const templates: ExerciseTemplate[] = [
+  {
+    id: 1,
+    name: "Беседа с сотрудником",
+    description: "Встроенное упражнение из библиотеки системы.",
+    status: "ready",
+    understood: true,
+    is_usable: true,
+    has_notebook: true,
+    notebook_file_name: "Блокнот_беседа.xlsx",
+    notebook_indicator_count: 89,
+    material_count: 3,
+    instructions_chars: 8412,
+    checked_at: new Date().toISOString(),
+    activated_at: new Date().toISOString(),
+    understanding: demoUnderstanding,
+    materials: [
+      { id: 1, file_name: "Инструкция ведущего.pdf", chars: 3120 },
+      { id: 2, file_name: "Инструкция наблюдателя.pdf", chars: 2890 },
+      { id: 3, file_name: "Инструкция участника.docx", chars: 2402 },
+    ],
+  },
+  {
+    id: 2,
+    name: "Планирование",
+    description: "Встроенное упражнение из библиотеки системы.",
+    status: "ready",
+    understood: true,
+    is_usable: false,
+    has_notebook: false,
+    notebook_file_name: null,
+    notebook_indicator_count: null,
+    material_count: 1,
+    instructions_chars: 4100,
+    checked_at: new Date().toISOString(),
+    activated_at: new Date().toISOString(),
+    understanding: { ...demoUnderstanding, summary: "Аналитическое упражнение на расстановку приоритетов." },
+    materials: [{ id: 4, file_name: "Планирование_методичка.pdf", chars: 4100 }],
+  },
+  {
+    id: 3,
+    name: "Групповая дискуссия (новое)",
+    description: null,
+    status: "draft",
+    understood: false,
+    is_usable: false,
+    has_notebook: true,
+    notebook_file_name: "Блокнот_группа.xlsx",
+    notebook_indicator_count: 77,
+    material_count: 1,
+    instructions_chars: 1200,
+    checked_at: new Date().toISOString(),
+    activated_at: null,
+    understanding: {
+      ...demoUnderstanding,
+      understood: false,
+      gaps: [
+        "Не указано, сколько участников в группе и есть ли назначенный лидер",
+        "Нет инструкции наблюдателя — непонятно, за чем именно следить",
+      ],
+      understood_reason:
+        "Из материалов не ясен формат группы и роль наблюдателя — вести оценку без догадок нельзя.",
+    },
+    materials: [{ id: 5, file_name: "Кейс_филиал.docx", chars: 1200 }],
+  },
+];
+
 export const demoApi = {
+  async listTemplates(usableOnly = false) {
+    await sleep(250);
+    return usableOnly ? templates.filter((t) => t.is_usable) : [...templates];
+  },
+  async getTemplate(id: number) {
+    await sleep(200);
+    return templates.find((t) => t.id === id) ?? notFound("Упражнение");
+  },
+  async createTemplate(name: string, description?: string) {
+    await sleep(300);
+    const t: ExerciseTemplate = {
+      id: ++nextId,
+      name,
+      description: description || null,
+      status: "draft",
+      understood: false,
+      is_usable: false,
+      has_notebook: false,
+      notebook_file_name: null,
+      notebook_indicator_count: null,
+      material_count: 0,
+      instructions_chars: 0,
+      checked_at: null,
+      activated_at: null,
+      understanding: null,
+      materials: [],
+    };
+    templates.unshift(t);
+    return t;
+  },
+  async deleteTemplate(id: number) {
+    await sleep(200);
+    const i = templates.findIndex((t) => t.id === id);
+    if (i >= 0) templates.splice(i, 1);
+    return { ok: true };
+  },
+  async uploadTemplateMaterial(id: number, file: File) {
+    await sleep(800);
+    const t = templates.find((x) => x.id === id) ?? notFound("Упражнение");
+    t.materials = [...(t.materials ?? []), { id: ++nextId, file_name: file.name, chars: 2500 }];
+    t.material_count = t.materials.length;
+    t.instructions_chars += 2500;
+    t.understood = false;
+    t.status = "draft";
+    t.is_usable = false;
+    return t;
+  },
+  async uploadTemplateNotebook(id: number, file: File) {
+    await sleep(800);
+    const t = templates.find((x) => x.id === id) ?? notFound("Упражнение");
+    t.has_notebook = true;
+    t.notebook_file_name = file.name;
+    t.notebook_indicator_count = 89;
+    t.understood = false;
+    t.status = "draft";
+    t.is_usable = false;
+    return t;
+  },
+  async checkTemplate(id: number) {
+    await sleep(2500);
+    const t = templates.find((x) => x.id === id) ?? notFound("Упражнение");
+    t.understanding = demoUnderstanding;
+    t.understood = true;
+    t.checked_at = new Date().toISOString();
+    t.status = "draft";
+    t.activated_at = null;
+    t.is_usable = false;
+    return t;
+  },
+  async activateTemplate(id: number) {
+    await sleep(400);
+    const t = templates.find((x) => x.id === id) ?? notFound("Упражнение");
+    t.status = "ready";
+    t.activated_at = new Date().toISOString();
+    t.is_usable = t.has_notebook;
+    return t;
+  },
+  async deactivateTemplate(id: number) {
+    await sleep(300);
+    const t = templates.find((x) => x.id === id) ?? notFound("Упражнение");
+    t.status = "draft";
+    t.activated_at = null;
+    t.is_usable = false;
+    return t;
+  },
+
   async getOverview() {
     await sleep(300);
     return demoOverview;
@@ -106,9 +292,18 @@ export const demoApi = {
     await sleep(150);
     return exercises.find((e) => e.id === id) ?? notFound("Упражнение");
   },
-  async createExercise(centerId: number, participantId: number, name: string) {
+  async createExercise(centerId: number, participantId: number, templateId: number) {
     await sleep(300);
-    const e: Exercise = { id: ++nextId, name, participant_id: participantId, center_id: centerId, has_instructions: false };
+    const t = templates.find((x) => x.id === templateId);
+    const e: Exercise = {
+      id: ++nextId,
+      name: t?.name ?? "Упражнение",
+      participant_id: participantId,
+      center_id: centerId,
+      has_instructions: true,
+      template_id: templateId,
+      notebook_indicator_count: t?.notebook_indicator_count ?? null,
+    };
     exercises.push(e);
     return e;
   },

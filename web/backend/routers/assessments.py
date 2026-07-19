@@ -4,7 +4,13 @@ from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from bot.models import AssessmentCenter, Exercise, Participant
+from bot.models import (
+    AssessmentCenter,
+    Exercise,
+    ExerciseTemplate,
+    ObserverNotebook,
+    Participant,
+)
 from web.backend.deps import WEB_OWNER_ID, get_session
 from web.backend.schemas import (
     CenterCreate,
@@ -22,13 +28,15 @@ def _participant_out(participant: Participant) -> ParticipantOut:
     return ParticipantOut(id=participant.id, code=participant.full_name, center_id=participant.center_id)
 
 
-def _exercise_out(exercise: Exercise) -> ExerciseOut:
+def _exercise_out(exercise: Exercise, indicator_count: int | None = None) -> ExerciseOut:
     return ExerciseOut(
         id=exercise.id,
         name=exercise.name,
         participant_id=exercise.participant_id,
         center_id=exercise.center_id,
         has_instructions=bool(exercise.instructions_text),
+        template_id=exercise.template_id,
+        notebook_indicator_count=indicator_count,
     )
 
 
@@ -109,17 +117,42 @@ async def create_exercise(payload: ExerciseCreate, session: AsyncSession = Depen
     if participant is None or participant.center_id != payload.center_id:
         raise HTTPException(status_code=404, detail="Участник не найден в этом центре")
 
+    template = await session.get(ExerciseTemplate, payload.template_id)
+    if template is None:
+        raise HTTPException(status_code=404, detail="Упражнение не найдено в каталоге")
+    if not template.is_usable:
+        raise HTTPException(
+            status_code=400,
+            detail="Упражнение ещё не готово к использованию: нужен разбор ИИ, активация и блокнот.",
+        )
+
+    # Snapshot name/instructions so past results stay reproducible if the catalog entry changes.
     exercise = Exercise(
         center_id=payload.center_id,
         participant_id=payload.participant_id,
         chat_id=WEB_OWNER_ID,
         user_id=WEB_OWNER_ID,
-        name=payload.name.strip(),
+        template_id=template.id,
+        name=template.name,
+        instructions_text=template.instructions_text,
     )
     session.add(exercise)
     await session.commit()
     await session.refresh(exercise)
-    return _exercise_out(exercise)
+
+    # The blank notebook comes from the catalog — downstream processing looks it up by exercise.
+    session.add(
+        ObserverNotebook(
+            chat_id=WEB_OWNER_ID,
+            user_id=WEB_OWNER_ID,
+            exercise_id=exercise.id,
+            file_id=f"template:{template.id}",
+            file_name=template.notebook_file_name,
+            file_path=template.notebook_path or "",
+        )
+    )
+    await session.commit()
+    return _exercise_out(exercise, template.notebook_indicator_count)
 
 
 @router.get("/participants/{participant_id}/exercises", response_model=list[ExerciseOut])

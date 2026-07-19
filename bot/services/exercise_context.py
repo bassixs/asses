@@ -23,6 +23,11 @@ def _load_library() -> dict[str, Any]:
     return data if isinstance(data, dict) else {}
 
 
+def load_exercise_library() -> dict[str, Any]:
+    """The bundled curated exercise library, keyed by slug."""
+    return _load_library()
+
+
 def _normalize(name: str) -> str:
     return re.sub(r"[^а-яёa-z0-9]", "", (name or "").lower())
 

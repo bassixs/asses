@@ -833,6 +833,145 @@ table.levels td.lvl {
   line-height: 1.65;
 }
 
+/* ---- exercise catalog ---- */
+select {
+  flex: 1;
+  min-width: 220px;
+  padding: 12px 15px;
+  border: 1px solid var(--line-soft);
+  border-radius: 12px;
+  background: rgba(0, 0, 0, 0.35);
+  color: var(--ink);
+  font-size: 14px;
+  font-family: inherit;
+  cursor: pointer;
+}
+select:focus {
+  outline: none;
+  border-color: var(--accent);
+  box-shadow: 0 0 0 3px rgba(198, 242, 78, 0.14);
+}
+select option {
+  background: var(--panel-solid);
+  color: var(--ink);
+}
+
+.badge {
+  display: inline-flex;
+  align-items: center;
+  padding: 5px 12px;
+  border-radius: 999px;
+  font-size: 12px;
+  font-weight: 700;
+  border: 1px solid var(--line-soft);
+  flex: none;
+  white-space: nowrap;
+}
+.badge.ok {
+  color: var(--accent);
+  background: rgba(198, 242, 78, 0.12);
+  border-color: var(--line);
+}
+.badge.warn {
+  color: #e8c65a;
+  background: rgba(232, 198, 90, 0.1);
+  border-color: rgba(232, 198, 90, 0.25);
+}
+.badge.err {
+  color: var(--err);
+  background: rgba(255, 107, 107, 0.1);
+  border-color: rgba(255, 107, 107, 0.25);
+}
+.badge.draft {
+  color: var(--muted);
+}
+
+.head-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 14px;
+  flex-wrap: wrap;
+}
+.head-row h1,
+.head-row h2 {
+  margin-bottom: 0;
+}
+
+.li-main {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  min-width: 0;
+}
+.li-sub {
+  font-size: 12.5px;
+}
+
+.file-list {
+  list-style: none;
+  padding: 0;
+  margin: 0 0 12px;
+  display: grid;
+  gap: 6px;
+}
+.file-list li {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 9px 13px;
+  border: 1px solid var(--line-soft);
+  border-radius: 10px;
+  background: rgba(255, 255, 255, 0.02);
+  font-size: 13px;
+}
+
+/* ---- AI understanding card ---- */
+.understanding.good {
+  border-color: var(--line);
+}
+.understanding.bad {
+  border-color: rgba(255, 107, 107, 0.3);
+}
+.understanding .verdict {
+  color: var(--ink);
+  font-size: 14.5px;
+  line-height: 1.6;
+  margin: 12px 0 4px;
+}
+.u-block {
+  margin-top: 18px;
+  padding-top: 16px;
+  border-top: 1px solid var(--line-soft);
+}
+.u-block h4 {
+  margin: 0 0 8px;
+  font-size: 12px;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--muted);
+  font-weight: 700;
+}
+.u-block p {
+  margin: 0;
+}
+.u-list {
+  margin: 0;
+  padding-left: 20px;
+  color: var(--muted);
+  font-size: 14px;
+  line-height: 1.65;
+}
+.u-list li {
+  margin-bottom: 5px;
+}
+.u-block.gaps {
+  border-top-color: rgba(255, 107, 107, 0.25);
+}
+.u-block.gaps h4 {
+  color: var(--err);
+}
+
 /* ---- footer ---- */
 .footer {
   text-align: center;

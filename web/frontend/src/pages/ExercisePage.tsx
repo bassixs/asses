@@ -10,8 +10,6 @@ export default function ExercisePage() {
   const exId = Number(id);
   const [ex, setEx] = useState<Exercise | null>(null);
   const [method, setMethod] = useState<Method>("");
-  const [instrMsg, setInstrMsg] = useState("");
-  const [notebookMsg, setNotebookMsg] = useState("");
   const [status, setStatus] = useState<ExerciseStatus | null>(null);
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
@@ -44,21 +42,6 @@ export default function ExercisePage() {
       setBusy(false);
     }
   };
-
-  const onInstr = (f?: File | null) =>
-    f &&
-    wrap(async () => {
-      const r = await api.uploadInstructions(exId, f);
-      setInstrMsg(`Инструкция добавлена (${r.chars} символов).`);
-      setEx(await api.getExercise(exId));
-    });
-
-  const onTemplate = (f?: File | null) =>
-    f &&
-    wrap(async () => {
-      const r = await api.uploadNotebookTemplate(exId, f);
-      setNotebookMsg(`Блокнот-шаблон принят (${r.indicators} индикаторов).`);
-    });
 
   const startPoll = () => {
     if (pollRef.current) window.clearInterval(pollRef.current);
@@ -104,19 +87,19 @@ export default function ExercisePage() {
       </div>
       <div className="card">
         <h1>{ex?.name ?? "Упражнение"}</h1>
-
-        <div className="step">
-          <h2>1. Инструкции упражнения (по желанию)</h2>
-          <p className="muted">
-            PDF или DOCX. Помогают точнее определить роли и «НЗ».{" "}
-            {ex?.has_instructions && <span className="pill">✓ загружены</span>}
-          </p>
-          <input type="file" accept=".pdf,.docx" disabled={busy} onChange={(e) => onInstr(e.target.files?.[0])} />
-          {instrMsg && <div className="ok">{instrMsg}</div>}
-        </div>
+        <p className="muted">
+          Материалы и блокнот наблюдателя взяты из каталога упражнения
+          {ex?.notebook_indicator_count ? ` (${ex.notebook_indicator_count} индикаторов)` : ""}.
+          {ex?.template_id && (
+            <>
+              {" "}
+              <Link to={`/exercises/${ex.template_id}`}>Открыть карточку упражнения →</Link>
+            </>
+          )}
+        </p>
 
         <div className={`step ${method ? "active" : ""}`}>
-          <h2>2. Способ оценки</h2>
+          <h2>1. Способ оценки</h2>
           <div className="row">
             <button className={method === "audio" ? "" : "ghost"} onClick={() => setMethod("audio")}>
               🎙 По аудиозаписи
@@ -129,25 +112,23 @@ export default function ExercisePage() {
 
         {method === "audio" && (
           <div className="step active">
-            <h2>3. Аудио + блокнот</h2>
+            <h2>2. Аудиозапись</h2>
             <p className="muted">
-              Сначала загрузите пустой блокнот наблюдателя (.xlsx), затем аудио — система расшифрует и заполнит блокнот.
+              Блокнот наблюдателя уже взят из каталога — загрузите только запись. Система расшифрует
+              её, разметит роли и заполнит блокнот.
             </p>
-            <div style={{ marginBottom: 10 }}>
-              <b>Блокнот-шаблон (.xlsx):</b>{" "}
-              <input type="file" accept=".xlsx" disabled={busy} onChange={(e) => onTemplate(e.target.files?.[0])} />
-              {notebookMsg && <div className="ok">{notebookMsg}</div>}
-            </div>
-            <div>
-              <b>Аудио:</b>{" "}
-              <input type="file" accept="audio/*,.mp3,.ogg,.m4a,.wav" disabled={busy} onChange={(e) => onAudio(e.target.files?.[0])} />
-            </div>
+            <input
+              type="file"
+              accept="audio/*,.mp3,.ogg,.m4a,.wav"
+              disabled={busy}
+              onChange={(e) => onAudio(e.target.files?.[0])}
+            />
           </div>
         )}
 
         {method === "filled" && (
           <div className="step active">
-            <h2>3. Заполненный блокнот</h2>
+            <h2>2. Заполненный блокнот</h2>
             <p className="muted">Наблюдатель уже проставил статусы и уровни — система прочитает их как есть.</p>
             <input type="file" accept=".xlsx" disabled={busy} onChange={(e) => onFilled(e.target.files?.[0])} />
           </div>

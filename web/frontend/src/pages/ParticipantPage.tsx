@@ -1,14 +1,15 @@
 import { useEffect, useState } from "react";
 import { Link, useParams } from "react-router-dom";
 import { api } from "../api";
-import type { Exercise, Participant } from "../types";
+import type { Exercise, ExerciseTemplate, Participant } from "../types";
 
 export default function ParticipantPage() {
   const { id } = useParams();
   const pid = Number(id);
   const [part, setPart] = useState<Participant | null>(null);
   const [exercises, setExercises] = useState<Exercise[]>([]);
-  const [name, setName] = useState("");
+  const [templates, setTemplates] = useState<ExerciseTemplate[]>([]);
+  const [templateId, setTemplateId] = useState("");
   const [error, setError] = useState("");
   const [msg, setMsg] = useState("");
   const [busy, setBusy] = useState(false);
@@ -24,15 +25,16 @@ export default function ParticipantPage() {
 
   useEffect(() => {
     load();
+    api.listTemplates(true).then(setTemplates).catch(() => setTemplates([]));
   }, [pid]);
 
   const add = async () => {
-    if (!name.trim() || !part) return;
+    if (!templateId || !part) return;
     setBusy(true);
     setError("");
     try {
-      await api.createExercise(part.center_id, pid, name.trim());
-      setName("");
+      await api.createExercise(part.center_id, pid, Number(templateId));
+      setTemplateId("");
       await load();
     } catch (e: any) {
       setError(e.message);
@@ -64,28 +66,40 @@ export default function ParticipantPage() {
       </div>
       <div className="card">
         <h1>Участник {part?.code ?? ""}</h1>
-        <div className="row" style={{ marginTop: 12 }}>
-          <input
-            type="text"
-            placeholder="Название упражнения (напр. Беседа с сотрудником)"
-            value={name}
-            onChange={(e) => setName(e.target.value)}
-            onKeyDown={(e) => e.key === "Enter" && add()}
-          />
-          <button onClick={add} disabled={busy}>
-            Добавить упражнение
+        <h2 style={{ marginTop: 16 }}>Добавить упражнение</h2>
+        <p className="muted">
+          Выбирается из <Link to="/exercises">каталога упражнений</Link> — материалы и блокнот
+          подтянутся автоматически.
+        </p>
+        <div className="row" style={{ marginTop: 10 }}>
+          <select value={templateId} onChange={(e) => setTemplateId(e.target.value)}>
+            <option value="">— выберите упражнение —</option>
+            {templates.map((t) => (
+              <option key={t.id} value={t.id}>
+                {t.name}
+              </option>
+            ))}
+          </select>
+          <button onClick={add} disabled={busy || !templateId}>
+            Добавить
           </button>
         </div>
+        {templates.length === 0 && (
+          <p className="muted" style={{ marginTop: 10 }}>
+            В каталоге пока нет готовых упражнений.{" "}
+            <Link to="/exercises">Создать упражнение →</Link>
+          </p>
+        )}
         {error && <div className="error">{error}</div>}
       </div>
 
       <div className="card">
-        <h2>Упражнения</h2>
+        <h2>Упражнения участника</h2>
         {exercises.length === 0 && <p className="muted">Пока нет упражнений.</p>}
         <ul className="list">
           {exercises.map((e) => (
             <li key={e.id}>
-              <Link to={`/exercises/${e.id}`}>{e.name}</Link>
+              <Link to={`/assessments/${e.id}`}>{e.name}</Link>
               <span className="pill">#{e.id}</span>
             </li>
           ))}

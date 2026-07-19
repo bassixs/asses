@@ -30,7 +30,8 @@ class ParticipantOut(BaseModel):
 class ExerciseCreate(BaseModel):
     center_id: int
     participant_id: int
-    name: str = Field(min_length=1, max_length=512)
+    # Exercises are picked from the catalog — the name and materials come with it.
+    template_id: int
 
 
 class ExerciseOut(BaseModel):
@@ -39,3 +40,5 @@ class ExerciseOut(BaseModel):
     participant_id: int
     center_id: int
     has_instructions: bool = False
+    template_id: int | None = None
+    notebook_indicator_count: int | None = None

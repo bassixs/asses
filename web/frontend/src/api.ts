@@ -1,5 +1,12 @@
 import { demoApi, IS_DEMO } from "./demo";
-import type { Center, Exercise, ExerciseStatus, Overview, Participant } from "./types";
+import type {
+  Center,
+  Exercise,
+  ExerciseStatus,
+  ExerciseTemplate,
+  Overview,
+  Participant,
+} from "./types";
 
 export { IS_DEMO };
 
@@ -74,8 +81,30 @@ const realApi = {
 
   listExercises: (participantId: number) => req<Exercise[]>(`/participants/${participantId}/exercises`),
   getExercise: (id: number) => req<Exercise>(`/exercises/${id}`),
-  createExercise: (centerId: number, participantId: number, name: string) =>
-    jsonPost<Exercise>("/exercises", { center_id: centerId, participant_id: participantId, name }),
+  createExercise: (centerId: number, participantId: number, templateId: number) =>
+    jsonPost<Exercise>("/exercises", {
+      center_id: centerId,
+      participant_id: participantId,
+      template_id: templateId,
+    }),
+
+  // ---- exercise catalog ----
+  listTemplates: (usableOnly = false) =>
+    req<ExerciseTemplate[]>(`/exercise-templates${usableOnly ? "?usable_only=true" : ""}`),
+  getTemplate: (id: number) => req<ExerciseTemplate>(`/exercise-templates/${id}`),
+  createTemplate: (name: string, description?: string) =>
+    jsonPost<ExerciseTemplate>("/exercise-templates", { name, description: description || null }),
+  deleteTemplate: (id: number) =>
+    req<{ ok: boolean }>(`/exercise-templates/${id}`, { method: "DELETE" }),
+  uploadTemplateMaterial: (id: number, file: File) =>
+    uploadFile<ExerciseTemplate>(`/exercise-templates/${id}/materials`, file),
+  uploadTemplateNotebook: (id: number, file: File) =>
+    uploadFile<ExerciseTemplate>(`/exercise-templates/${id}/notebook`, file),
+  checkTemplate: (id: number) => jsonPost<ExerciseTemplate>(`/exercise-templates/${id}/check`, {}),
+  activateTemplate: (id: number) =>
+    jsonPost<ExerciseTemplate>(`/exercise-templates/${id}/activate`, {}),
+  deactivateTemplate: (id: number) =>
+    jsonPost<ExerciseTemplate>(`/exercise-templates/${id}/deactivate`, {}),
 
   uploadInstructions: (exId: number, file: File) =>
     uploadFile<{ ok: boolean; chars: number }>(`/exercises/${exId}/instructions`, file),

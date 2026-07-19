@@ -64,6 +64,14 @@ class Exercise(Base):
     )
     chat_id: Mapped[int] = mapped_column(BigInteger, index=True)
     user_id: Mapped[int] = mapped_column(BigInteger, index=True)
+    # Catalog exercise this assessment was created from. Null for legacy rows created
+    # before the catalog existed. Name/instructions below are snapshotted at creation
+    # so past results stay reproducible even if the catalog entry changes later.
+    template_id: Mapped[int | None] = mapped_column(
+        ForeignKey("exercise_templates.id", ondelete="SET NULL"),
+        index=True,
+        nullable=True,
+    )
     name: Mapped[str] = mapped_column(String(512))
     description: Mapped[str | None] = mapped_column(Text, nullable=True)
     # Concatenated text extracted from uploaded exercise instruction files
