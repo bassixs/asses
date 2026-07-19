@@ -138,6 +138,8 @@ const templates: ExerciseTemplate[] = [
     notebook_indicator_count: 89,
     material_count: 3,
     instructions_chars: 8412,
+    instructions_limit: 60000,
+    instructions_truncated: false,
     checked_at: new Date().toISOString(),
     activated_at: new Date().toISOString(),
     understanding: demoUnderstanding,
@@ -159,6 +161,8 @@ const templates: ExerciseTemplate[] = [
     notebook_indicator_count: null,
     material_count: 1,
     instructions_chars: 4100,
+    instructions_limit: 60000,
+    instructions_truncated: false,
     checked_at: new Date().toISOString(),
     activated_at: new Date().toISOString(),
     understanding: { ...demoUnderstanding, summary: "Аналитическое упражнение на расстановку приоритетов." },
@@ -176,6 +180,8 @@ const templates: ExerciseTemplate[] = [
     notebook_indicator_count: 77,
     material_count: 1,
     instructions_chars: 1200,
+    instructions_limit: 60000,
+    instructions_truncated: false,
     checked_at: new Date().toISOString(),
     activated_at: null,
     understanding: {
@@ -264,6 +270,8 @@ export const demoApi = {
       notebook_indicator_count: null,
       material_count: 0,
       instructions_chars: 0,
+      instructions_limit: 60000,
+      instructions_truncated: false,
       checked_at: null,
       activated_at: null,
       understanding: null,
@@ -278,6 +286,27 @@ export const demoApi = {
     if (i >= 0) templates.splice(i, 1);
     return { ok: true };
   },
+  async updateTemplate(id: number, patch: { name?: string; description?: string }) {
+    await sleep(250);
+    const t = templates.find((x) => x.id === id) ?? notFound("Упражнение");
+    if (patch.name !== undefined) t.name = patch.name;
+    if (patch.description !== undefined) t.description = patch.description || null;
+    return t;
+  },
+  async deleteMaterial(id: number, materialId: number) {
+    await sleep(400);
+    const t = templates.find((x) => x.id === id) ?? notFound("Упражнение");
+    const gone = (t.materials ?? []).find((m) => m.id === materialId);
+    t.materials = (t.materials ?? []).filter((m) => m.id !== materialId);
+    t.material_count = t.materials.length;
+    t.instructions_chars = Math.max(0, t.instructions_chars - (gone?.chars ?? 0));
+    t.instructions_truncated = t.instructions_chars >= t.instructions_limit;
+    t.understood = false;
+    t.status = "draft";
+    t.is_usable = false;
+    return t;
+  },
+
   async uploadTemplateMaterial(id: number, file: File) {
     await sleep(800);
     const t = templates.find((x) => x.id === id) ?? notFound("Упражнение");

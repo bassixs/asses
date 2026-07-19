@@ -15,7 +15,9 @@ logger = logging.getLogger(__name__)
 # makes the model report "не все индикаторы приведены" as a gap — and that gap blocks
 # activation forever. The cap only guards against an absurdly large notebook.
 MAX_INDICATORS_TOTAL = 400
-MAX_MATERIALS_CHARS = 14000
+# Raw materials are read only here, once per exercise — not in every analysis batch —
+# so we can afford to send a lot of them.
+MAX_MATERIALS_CHARS = 50000
 
 _SYSTEM_PROMPT = (
     "Ты — методолог ассессмент-центра. Тебе дают материалы упражнения (инструкции ведущего, "
@@ -104,6 +106,42 @@ async def analyze_exercise_understanding(
         json_mode=settings.analysis_llm_json_mode,
     )
     return _coerce(raw, has_materials=bool(materials), has_indicators=bool(indicators))
+
+
+def render_understanding_brief(understanding: dict[str, Any] | None, exercise_name: str) -> str:
+    """Compact exercise brief for the scoring prompts.
+
+    The raw materials run to tens of thousands of characters and would ride along in
+    every analysis batch and every role-labeling chunk (~7 times per exercise). The
+    understanding card already holds exactly what scoring needs — who plays whom, what
+    situations the exercise creates, what cannot be observed — in ~1/7 of the size.
+    """
+    if not understanding:
+        return ""
+
+    parts = [f"Карточка упражнения «{exercise_name}» (разбор материалов, подтверждён HR):"]
+    if understanding.get("summary"):
+        parts.append(f"Суть: {understanding['summary']}")
+    if understanding.get("format"):
+        parts.append(f"Формат: {understanding['format']}")
+    if understanding.get("participant_role"):
+        parts.append(f"Оцениваемый участник играет: {understanding['participant_role']}")
+    if understanding.get("facilitator_role"):
+        parts.append(f"Ведущий (ролевой игрок): {understanding['facilitator_role']}")
+
+    situations = understanding.get("expected_situations") or []
+    if situations:
+        parts.append("Ситуации, которые упражнение создаёт специально:")
+        parts.extend(f"- {item}" for item in situations)
+
+    not_observable = understanding.get("not_observable") or []
+    if not_observable:
+        parts.append("В этом упражнении НЕ может проявиться (такие индикаторы — «НЗ», а не «−»):")
+        parts.extend(f"- {item}" for item in not_observable)
+
+    if understanding.get("nz_guidance"):
+        parts.append(f"Правило «НЗ»: {understanding['nz_guidance']}")
+    return "\n".join(parts)
 
 
 def _as_str_list(value: Any) -> list[str]:

@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { Link, useParams } from "react-router-dom";
 import { api } from "../api";
+import { ConfirmDelete } from "../components/ConfirmDelete";
 import type { ExerciseTemplate } from "../types";
 import { StatusBadge } from "./ExerciseLibrary";
 
@@ -36,6 +37,9 @@ export default function TemplatePage() {
   const [busy, setBusy] = useState(false);
   const [checking, setChecking] = useState(false);
   const [progress, setProgress] = useState("");
+  const [editing, setEditing] = useState(false);
+  const [draftName, setDraftName] = useState("");
+  const [draftDesc, setDraftDesc] = useState("");
 
   useEffect(() => {
     api.getTemplate(tid).then(setT).catch((e: any) => setError(e.message));
@@ -102,10 +106,61 @@ export default function TemplatePage() {
 
       <div className="card">
         <div className="head-row">
-          <h1>{t.name}</h1>
-          <StatusBadge t={t} />
+          {editing ? (
+            <div className="edit-fields">
+              <input
+                type="text"
+                value={draftName}
+                placeholder="Название упражнения"
+                onChange={(e) => setDraftName(e.target.value)}
+              />
+              <input
+                type="text"
+                value={draftDesc}
+                placeholder="Описание (необязательно)"
+                onChange={(e) => setDraftDesc(e.target.value)}
+              />
+              <div className="row">
+                <button
+                  disabled={busy || !draftName.trim()}
+                  onClick={() =>
+                    wrap(async () => {
+                      const r = await api.updateTemplate(tid, {
+                        name: draftName.trim(),
+                        description: draftDesc,
+                      });
+                      setEditing(false);
+                      return r;
+                    })
+                  }
+                >
+                  Сохранить
+                </button>
+                <button className="ghost" onClick={() => setEditing(false)}>
+                  Отмена
+                </button>
+              </div>
+            </div>
+          ) : (
+            <>
+              <h1>{t.name}</h1>
+              <span className="head-actions">
+                <button
+                  className="ghost small"
+                  onClick={() => {
+                    setDraftName(t.name);
+                    setDraftDesc(t.description ?? "");
+                    setEditing(true);
+                  }}
+                >
+                  Переименовать
+                </button>
+                <StatusBadge t={t} />
+              </span>
+            </>
+          )}
         </div>
-        {t.description && <p className="muted">{t.description}</p>}
+        {!editing && t.description && <p className="muted">{t.description}</p>}
         {t.is_usable && (
           <div className="ok" style={{ marginTop: 10 }}>
             Упражнение доступно для выбора при оценке участников.
@@ -125,11 +180,39 @@ export default function TemplatePage() {
               {t.materials.map((m) => (
                 <li key={m.id}>
                   <span>📄 {m.file_name}</span>
-                  <span className="muted">{m.chars} символов</span>
+                  <span className="file-right">
+                    <span className="muted">{m.chars} символов</span>
+                    <ConfirmDelete
+                      busy={busy}
+                      what={`материал «${m.file_name}»`}
+                      onConfirm={() => wrap(() => api.deleteMaterial(tid, m.id))}
+                    />
+                  </span>
                 </li>
               ))}
             </ul>
           )}
+
+          <div className="usage">
+            <div className="usage-track">
+              <div
+                className={`usage-fill ${t.instructions_truncated ? "over" : ""}`}
+                style={{
+                  width: `${Math.min(100, (t.instructions_chars / t.instructions_limit) * 100)}%`,
+                }}
+              />
+            </div>
+            <div className="muted">
+              Текст материалов: {t.instructions_chars.toLocaleString("ru-RU")} из{" "}
+              {t.instructions_limit.toLocaleString("ru-RU")} символов
+            </div>
+            {t.instructions_truncated && (
+              <div className="error">
+                Лимит исчерпан — конец текста обрезан и до ИИ не дойдёт. Удалите лишний материал
+                или замените его более коротким.
+              </div>
+            )}
+          </div>
           <input
             type="file"
             accept=".pdf,.docx,.txt,.md"

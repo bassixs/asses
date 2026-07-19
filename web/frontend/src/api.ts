@@ -119,6 +119,14 @@ const realApi = {
     jsonPost<ExerciseTemplate>("/exercise-templates", { name, description: description || null }),
   deleteTemplate: (id: number) =>
     req<{ ok: boolean }>(`/exercise-templates/${id}`, { method: "DELETE" }),
+  updateTemplate: (id: number, patch: { name?: string; description?: string }) =>
+    req<ExerciseTemplate>(`/exercise-templates/${id}`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(patch),
+    }),
+  deleteMaterial: (id: number, materialId: number) =>
+    req<ExerciseTemplate>(`/exercise-templates/${id}/materials/${materialId}`, { method: "DELETE" }),
   uploadTemplateMaterial: (id: number, file: File) =>
     uploadFile<ExerciseTemplate>(`/exercise-templates/${id}/materials`, file),
   uploadTemplateNotebook: (id: number, file: File) =>

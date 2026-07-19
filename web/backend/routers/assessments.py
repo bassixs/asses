@@ -12,6 +12,7 @@ from bot.models import (
     ObserverNotebook,
     Participant,
 )
+from bot.services.exercise_understanding import render_understanding_brief
 from web.backend.deps import WEB_OWNER_ID, get_session
 from web.backend.purge import delete_center, delete_exercises, delete_participants
 from web.backend.schemas import (
@@ -190,7 +191,12 @@ async def create_exercise(payload: ExerciseCreate, session: AsyncSession = Depen
             detail="Упражнение ещё не готово к использованию: нужен разбор ИИ, активация и блокнот.",
         )
 
-    # Snapshot name/instructions so past results stay reproducible if the catalog entry changes.
+    # Snapshot the context so past results stay reproducible if the catalog entry changes.
+    # We store the compact understanding brief rather than the raw materials: this text is
+    # resent in every analysis batch and role-labeling chunk (~7x per exercise), and the
+    # brief carries exactly what scoring needs at a fraction of the size. Raw materials are
+    # the fallback for entries that somehow have no card.
+    context = render_understanding_brief(template.understanding_json, template.name)
     exercise = Exercise(
         center_id=payload.center_id,
         participant_id=payload.participant_id,
@@ -198,7 +204,7 @@ async def create_exercise(payload: ExerciseCreate, session: AsyncSession = Depen
         user_id=WEB_OWNER_ID,
         template_id=template.id,
         name=template.name,
-        instructions_text=template.instructions_text,
+        instructions_text=context or template.instructions_text,
     )
     session.add(exercise)
     await session.commit()

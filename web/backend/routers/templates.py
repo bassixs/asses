@@ -16,8 +16,10 @@ from bot.models import Exercise, ExerciseTemplate, ExerciseTemplateMaterial
 from bot.models.exercise_template import STATUS_DRAFT, STATUS_READY
 from bot.services.exercise_understanding import analyze_exercise_understanding
 from bot.services.instruction_files import (
+    MAX_INSTRUCTIONS_CHARS,
     InstructionExtractionError,
     append_instructions,
+    combine_instructions,
     extract_instruction_text,
     is_supported_instruction,
 )
@@ -31,6 +33,11 @@ router = APIRouter(tags=["exercise-templates"])
 
 class TemplateCreate(BaseModel):
     name: str
+    description: str | None = None
+
+
+class TemplateUpdate(BaseModel):
+    name: str | None = None
     description: str | None = None
 
 
@@ -58,6 +65,9 @@ def _out(template: ExerciseTemplate, *, full: bool = False) -> dict:
         "notebook_indicator_count": template.notebook_indicator_count,
         "material_count": len(template.materials),
         "instructions_chars": len(template.instructions_text or ""),
+        "instructions_limit": MAX_INSTRUCTIONS_CHARS,
+        # Materials no longer fit in full — the tail was cut and the AI will not see it.
+        "instructions_truncated": len(template.instructions_text or "") >= MAX_INSTRUCTIONS_CHARS,
         "checked_at": template.checked_at,
         "activated_at": template.activated_at,
     }
@@ -166,6 +176,63 @@ async def upload_material(
             chars=len(text),
         )
     )
+    _invalidate(template)
+    await session.commit()
+    await session.refresh(template, ["materials"])
+    return _out(template, full=True)
+
+
+@router.patch("/exercise-templates/{template_id}")
+async def update_template(
+    template_id: int, payload: TemplateUpdate, session: AsyncSession = Depends(get_session)
+) -> dict:
+    """Rename an exercise or change its description. Materials and verdict untouched."""
+    template = await _get_template(template_id, session)
+    if payload.name is not None:
+        name = payload.name.strip()
+        if not name:
+            raise HTTPException(status_code=400, detail="Название не может быть пустым.")
+        template.name = name
+    if payload.description is not None:
+        template.description = payload.description.strip() or None
+    await session.commit()
+    await session.refresh(template, ["materials"])
+    return _out(template, full=True)
+
+
+@router.delete("/exercise-templates/{template_id}/materials/{material_id}")
+async def delete_material(
+    template_id: int, material_id: int, session: AsyncSession = Depends(get_session)
+) -> dict:
+    """Remove one material and rebuild the exercise text from the files that remain.
+
+    Rebuilding matters: the texts are concatenated into one blob, so merely dropping the
+    row would leave the deleted file's content still feeding the AI.
+    """
+    template = await _get_template(template_id, session)
+    material = next((m for m in template.materials if m.id == material_id), None)
+    if material is None:
+        raise HTTPException(status_code=404, detail="Материал не найден")
+
+    path = Path(material.file_path)
+    await session.delete(material)
+    await session.flush()
+    try:
+        path.unlink(missing_ok=True)
+    except OSError:
+        logger.warning("Could not delete material file %s", path)
+
+    remaining = [m for m in template.materials if m.id != material_id]
+    parts: list[tuple[str, str]] = []
+    for item in remaining:
+        try:
+            parts.append((item.file_name, extract_instruction_text(Path(item.file_path))))
+        except (InstructionExtractionError, OSError):
+            # File gone or unreadable — keep going rather than lose every other material.
+            logger.warning("Could not re-read material %s while rebuilding", item.file_path)
+
+    text, _ = combine_instructions(parts)
+    template.instructions_text = text or None
     _invalidate(template)
     await session.commit()
     await session.refresh(template, ["materials"])

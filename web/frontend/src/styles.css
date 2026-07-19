@@ -1050,6 +1050,48 @@ select option {
   font-size: 13px;
 }
 
+/* ---- материалы: правка и лимит ---- */
+.file-right {
+  display: inline-flex;
+  align-items: center;
+  gap: 12px;
+  flex: none;
+}
+.head-actions {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  flex: none;
+}
+button.small {
+  padding: 6px 12px;
+  font-size: 12.5px;
+}
+.edit-fields {
+  display: grid;
+  gap: 8px;
+  width: 100%;
+}
+.usage {
+  margin-top: 14px;
+}
+.usage-track {
+  height: 5px;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.06);
+  overflow: hidden;
+  margin-bottom: 7px;
+}
+.usage-fill {
+  height: 100%;
+  border-radius: 999px;
+  background: linear-gradient(90deg, var(--accent-2), var(--accent));
+  transition: width 0.4s ease;
+}
+.usage-fill.over {
+  background: var(--err);
+}
+
 /* ---- AI understanding card ---- */
 .understanding.good {
   border-color: var(--line);

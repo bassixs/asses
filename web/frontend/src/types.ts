@@ -56,6 +56,8 @@ export interface ExerciseTemplate {
   notebook_indicator_count: number | null;
   material_count: number;
   instructions_chars: number;
+  instructions_limit: number;
+  instructions_truncated: boolean;
   checked_at: string | null;
   activated_at: string | null;
   understanding?: Understanding | null;
