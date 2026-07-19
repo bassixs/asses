@@ -99,8 +99,20 @@ export default function CenterPage() {
           {parts.map((p) => (
             <li key={p.id}>
               <Link className="row-link" to={`/participants/${p.id}`}>
-                <span>Участник {p.code}</span>
+                <span className="li-main">
+                  Участник {p.code}
+                  <span className="li-sub muted">
+                    {p.processed_count
+                      ? `оценено упражнений: ${p.processed_count}`
+                      : "упражнения ещё не оценены"}
+                  </span>
+                </span>
                 <span className="row-actions">
+                  {p.has_report ? (
+                    <span className="badge ok">✓ отчёт собран</span>
+                  ) : p.processed_count ? (
+                    <span className="badge warn">ждёт отчёта</span>
+                  ) : null}
                   <ConfirmDelete
                     busy={busy}
                     what={`участника ${p.code} со всеми его упражнениями и отчётами`}

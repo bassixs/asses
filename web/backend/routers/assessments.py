@@ -185,10 +185,31 @@ async def create_participant(
 
 @router.get("/centers/{center_id}/participants", response_model=list[ParticipantOut])
 async def list_participants(center_id: int, session: AsyncSession = Depends(get_session)) -> list[ParticipantOut]:
-    rows = await session.scalars(
-        select(Participant).where(Participant.center_id == center_id).order_by(Participant.id)
+    rows = list(
+        await session.scalars(
+            select(Participant).where(Participant.center_id == center_id).order_by(Participant.id)
+        )
     )
-    return [_participant_out(p) for p in rows]
+    ids = [p.id for p in rows] or [0]
+
+    # Two grouped queries rather than per-participant lookups, so a large centre stays cheap.
+    with_report = set(
+        await session.scalars(
+            select(ParticipantReport.participant_id).where(ParticipantReport.participant_id.in_(ids))
+        )
+    )
+    processed = dict(
+        (await session.execute(
+            select(Exercise.participant_id, func.count(func.distinct(NotebookFillResult.exercise_id)))
+            .join(NotebookFillResult, NotebookFillResult.exercise_id == Exercise.id)
+            .where(Exercise.participant_id.in_(ids))
+            .group_by(Exercise.participant_id)
+        )).all()
+    )
+    return [
+        _participant_out(p, has_report=p.id in with_report, processed=processed.get(p.id, 0))
+        for p in rows
+    ]
 
 
 @router.get("/participants/{participant_id}", response_model=ParticipantOut)
