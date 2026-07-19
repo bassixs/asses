@@ -24,6 +24,10 @@ html,
 body {
   margin: 0;
   padding: 0;
+  /* Свечение героя намеренно шире экрана. clip (в отличие от hidden) обрезает
+     его, не создавая контейнер прокрутки, — sticky-шапка продолжает работать.
+     Нужно и на html: контейнер прокрутки страницы — именно он. */
+  overflow-x: clip;
 }
 
 body {
@@ -1408,15 +1412,88 @@ button.danger:hover:not(:disabled) {
   transform: none;
 }
 
+/* Появление блоков на всех остальных страницах.
+   Работает само для любой страницы и переигрывается при смене раздела, потому
+   что React пересоздаёт содержимое. Блоки с .reveal исключены — у них своя
+   логика появления по прокрутке. */
+@keyframes page-in {
+  from {
+    opacity: 0;
+    transform: translateY(14px);
+  }
+}
+.container > *:not(.reveal) {
+  animation: page-in 0.5s ease-out backwards;
+}
+.container > *:not(.reveal):nth-child(2) {
+  animation-delay: 70ms;
+}
+.container > *:not(.reveal):nth-child(3) {
+  animation-delay: 140ms;
+}
+.container > *:not(.reveal):nth-child(4) {
+  animation-delay: 210ms;
+}
+.container > *:not(.reveal):nth-child(5) {
+  animation-delay: 280ms;
+}
+.container > *:not(.reveal):nth-child(n + 6) {
+  animation-delay: 340ms;
+}
+
+/* Аварийный режим: анимации не идут — показываем всё как есть (см. main.tsx) */
+.no-anim .container > *,
+.no-anim .center-grid > *,
+.no-anim .cards-grid > *,
+.no-anim .center-rows > *,
+.no-anim .reveal {
+  animation: none !important;
+  opacity: 1 !important;
+  transform: none !important;
+}
+
+/* Карточки центров и строки списков подхватываются по очереди */
+.center-grid > *,
+.cards-grid > *,
+.center-rows > * {
+  animation: page-in 0.45s ease-out backwards;
+}
+.center-grid > *:nth-child(2),
+.cards-grid > *:nth-child(2),
+.center-rows > *:nth-child(2) {
+  animation-delay: 60ms;
+}
+.center-grid > *:nth-child(3),
+.cards-grid > *:nth-child(3),
+.center-rows > *:nth-child(3) {
+  animation-delay: 120ms;
+}
+.center-grid > *:nth-child(4),
+.cards-grid > *:nth-child(4),
+.center-rows > *:nth-child(4) {
+  animation-delay: 180ms;
+}
+.center-grid > *:nth-child(n + 5),
+.cards-grid > *:nth-child(n + 5),
+.center-rows > *:nth-child(n + 5) {
+  animation-delay: 240ms;
+}
+
 /* ---- hero ---- */
 .hero-xl {
   position: relative;
   padding: 70px 0 48px;
-  overflow: hidden;
+  /* Никакого overflow: hidden — именно он обрезал свечение по ширине контейнера
+     и давал резкий вертикальный шов на широких экранах. */
 }
 .aurora {
   position: absolute;
-  inset: -180px -40px auto;
+  top: -180px;
+  left: 50%;
+  transform: translateX(-50%);
+  /* Шире контейнера, чтобы свечение уходило за края страницы и таяло само,
+     а не упиралось в границу. Потолок — чтобы на ультрашироких не расползалось. */
+  width: min(1600px, 160vw);
   height: 520px;
   pointer-events: none;
   z-index: -1;
@@ -1827,7 +1904,11 @@ button.danger:hover:not(:disabled) {
   .pl-wave span,
   .pl-line,
   .pl-ind,
-  .pl-fill {
+  .pl-fill,
+  .container > *,
+  .center-grid > *,
+  .cards-grid > *,
+  .center-rows > * {
     animation: none !important;
   }
   .pl-line,
