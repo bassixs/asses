@@ -10,9 +10,11 @@ from bot.services.observer_notebook import IndicatorRow
 
 logger = logging.getLogger(__name__)
 
-# Keep the prompt bounded: materials are already capped at 16k chars, and we sample
-# indicators rather than sending every one of them (notebooks run to ~90 rows).
-MAX_INDICATORS_PER_COMPETENCE = 6
+# Send every indicator. Sampling them was a false economy: a typical notebook is ~90
+# rows (~2.5k tokens), which is nothing next to the materials, while a truncated list
+# makes the model report "не все индикаторы приведены" as a gap — and that gap blocks
+# activation forever. The cap only guards against an absurdly large notebook.
+MAX_INDICATORS_TOTAL = 400
 MAX_MATERIALS_CHARS = 14000
 
 _SYSTEM_PROMPT = (
@@ -44,18 +46,19 @@ _SYSTEM_PROMPT = (
 
 
 def _indicator_digest(indicators: list[IndicatorRow]) -> str:
-    """Compact competence → sample-indicators listing for the prompt."""
+    """Competence → full indicator listing for the prompt."""
     grouped: dict[str, list[str]] = defaultdict(list)
-    for item in indicators:
+    for item in indicators[:MAX_INDICATORS_TOTAL]:
         grouped[item.competence].append(item.indicator)
 
     lines: list[str] = []
     for competence, texts in grouped.items():
-        shown = [t for t in texts if t][:MAX_INDICATORS_PER_COMPETENCE]
-        lines.append(f"— {competence or 'без названия'} (индикаторов: {len(texts)})")
+        shown = [t for t in texts if t]
+        lines.append(f"— {competence or 'без названия'} (индикаторов: {len(shown)})")
         lines.extend(f"    · {text}" for text in shown)
-        if len(texts) > len(shown):
-            lines.append(f"    · … ещё {len(texts) - len(shown)}")
+
+    if len(indicators) > MAX_INDICATORS_TOTAL:
+        lines.append(f"(показаны первые {MAX_INDICATORS_TOTAL} из {len(indicators)} индикаторов)")
     return "\n".join(lines)
 
 
