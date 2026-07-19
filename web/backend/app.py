@@ -60,7 +60,10 @@ app.include_router(templates.router, prefix="/api")
 @app.on_event("startup")
 async def _on_startup() -> None:
     await init_db()
-    await seed_builtin_templates()
+    try:
+        await seed_builtin_templates()
+    except Exception:  # noqa: BLE001 - seeding is a convenience, never a reason to refuse to boot
+        logging.exception("Could not seed built-in exercise templates; continuing without them")
 
 
 @app.get("/api/health")
