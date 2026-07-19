@@ -96,11 +96,13 @@ export default function ParticipantPage() {
       <div className="card">
         <h2>Упражнения участника</h2>
         {exercises.length === 0 && <p className="muted">Пока нет упражнений.</p>}
-        <ul className="list">
+        <ul className="list rows">
           {exercises.map((e) => (
             <li key={e.id}>
-              <Link to={`/assessments/${e.id}`}>{e.name}</Link>
-              <span className="pill">#{e.id}</span>
+              <Link className="row-link" to={`/assessments/${e.id}`}>
+                <span>{e.name}</span>
+                <span className="pill">#{e.id}</span>
+              </Link>
             </li>
           ))}
         </ul>

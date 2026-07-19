@@ -80,19 +80,21 @@ export default function ExerciseLibrary() {
           Каталог {items.length > 0 && <span className="pill">{ready} из {items.length} готовы</span>}
         </h2>
         {items.length === 0 && <p className="muted">Каталог пуст. Создайте первое упражнение.</p>}
-        <ul className="list">
+        <ul className="list rows">
           {items.map((t) => (
             <li key={t.id}>
-              <div className="li-main">
-                <Link to={`/exercises/${t.id}`}>{t.name}</Link>
-                <div className="li-sub muted">
-                  материалов: {t.material_count} ·{" "}
-                  {t.has_notebook
-                    ? `блокнот: ${t.notebook_indicator_count ?? "?"} индикаторов`
-                    : "блокнот не приложен"}
-                </div>
-              </div>
-              <StatusBadge t={t} />
+              <Link className="row-link" to={`/exercises/${t.id}`}>
+                <span className="li-main">
+                  {t.name}
+                  <span className="li-sub muted">
+                    материалов: {t.material_count} ·{" "}
+                    {t.has_notebook
+                      ? `блокнот: ${t.notebook_indicator_count ?? "?"} индикаторов`
+                      : "блокнот не приложен"}
+                  </span>
+                </span>
+                <StatusBadge t={t} />
+              </Link>
             </li>
           ))}
         </ul>

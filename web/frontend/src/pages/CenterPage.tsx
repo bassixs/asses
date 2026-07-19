@@ -68,11 +68,13 @@ export default function CenterPage() {
       <div className="card">
         <h2>Участники</h2>
         {parts.length === 0 && <p className="muted">Пока нет участников.</p>}
-        <ul className="list">
+        <ul className="list rows">
           {parts.map((p) => (
             <li key={p.id}>
-              <Link to={`/participants/${p.id}`}>Участник {p.code}</Link>
-              <span className="pill">#{p.id}</span>
+              <Link className="row-link" to={`/participants/${p.id}`}>
+                <span>Участник {p.code}</span>
+                <span className="pill">#{p.id}</span>
+              </Link>
             </li>
           ))}
         </ul>

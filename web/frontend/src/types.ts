@@ -2,6 +2,9 @@ export interface Center {
   id: number;
   name: string;
   created_at?: string;
+  participants?: number;
+  exercises?: number;
+  processed?: number;
 }
 
 export interface Participant {

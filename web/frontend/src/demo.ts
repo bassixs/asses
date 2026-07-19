@@ -22,7 +22,32 @@ const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
 // ---- in-memory store, pre-seeded so the UI looks alive ----
 let nextId = 100;
-const centers: Center[] = [{ id: 1, name: "Ассессмент-центр «Демо»", created_at: new Date().toISOString() }];
+const centers: Center[] = [
+  {
+    id: 1,
+    name: "Ассессмент-центр «Демо»",
+    created_at: new Date().toISOString(),
+    participants: 8,
+    exercises: 21,
+    processed: 17,
+  },
+  {
+    id: 2,
+    name: "Резерв руководителей, июль",
+    created_at: new Date(Date.now() - 86400000 * 12).toISOString(),
+    participants: 14,
+    exercises: 34,
+    processed: 34,
+  },
+  {
+    id: 3,
+    name: "Отбор в кадровый резерв",
+    created_at: new Date(Date.now() - 86400000 * 3).toISOString(),
+    participants: 5,
+    exercises: 9,
+    processed: 2,
+  },
+];
 const participants: Participant[] = [
   { id: 1, code: "AC-001", center_id: 1 },
   { id: 2, code: "№2", center_id: 1 },
@@ -259,7 +284,14 @@ export const demoApi = {
   },
   async createCenter(name: string) {
     await sleep(300);
-    const c: Center = { id: ++nextId, name, created_at: new Date().toISOString() };
+    const c: Center = {
+      id: ++nextId,
+      name,
+      created_at: new Date().toISOString(),
+      participants: 0,
+      exercises: 0,
+      processed: 0,
+    };
     centers.unshift(c);
     return c;
   },

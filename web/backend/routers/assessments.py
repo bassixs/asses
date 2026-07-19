@@ -1,13 +1,14 @@
 from __future__ import annotations
 
 from fastapi import APIRouter, Depends, HTTPException
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from bot.models import (
     AssessmentCenter,
     Exercise,
     ExerciseTemplate,
+    NotebookFillResult,
     ObserverNotebook,
     Participant,
 )
@@ -53,8 +54,38 @@ async def create_center(payload: CenterCreate, session: AsyncSession = Depends(g
 
 @router.get("/centers", response_model=list[CenterOut])
 async def list_centers(session: AsyncSession = Depends(get_session)) -> list[CenterOut]:
-    rows = await session.scalars(select(AssessmentCenter).order_by(AssessmentCenter.id.desc()))
-    return [CenterOut(id=c.id, name=c.name, created_at=c.created_at) for c in rows]
+    rows = list(await session.scalars(select(AssessmentCenter).order_by(AssessmentCenter.id.desc())))
+
+    participants = dict(
+        (await session.execute(
+            select(Participant.center_id, func.count()).group_by(Participant.center_id)
+        )).all()
+    )
+    exercises = dict(
+        (await session.execute(
+            select(Exercise.center_id, func.count()).group_by(Exercise.center_id)
+        )).all()
+    )
+    # Exercises that already have a filled notebook (one row per processed exercise).
+    processed = dict(
+        (await session.execute(
+            select(Exercise.center_id, func.count(func.distinct(NotebookFillResult.exercise_id)))
+            .join(NotebookFillResult, NotebookFillResult.exercise_id == Exercise.id)
+            .group_by(Exercise.center_id)
+        )).all()
+    )
+
+    return [
+        CenterOut(
+            id=c.id,
+            name=c.name,
+            created_at=c.created_at,
+            participants=participants.get(c.id, 0),
+            exercises=exercises.get(c.id, 0),
+            processed=processed.get(c.id, 0),
+        )
+        for c in rows
+    ]
 
 
 @router.get("/centers/{center_id}", response_model=CenterOut)
