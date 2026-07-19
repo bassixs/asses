@@ -92,6 +92,12 @@ const demoOverview: Overview = {
     { name: "Норма", count: 128 },
     { name: "Выше нормы", count: 55 },
   ],
+  by_center: [
+    { id: 2, name: "Резерв руководителей, июль", participants: 14, exercises: 34, processed: 34, avg_level: 2.1 },
+    { id: 1, name: "Ассессмент-центр «Демо»", participants: 8, exercises: 21, processed: 17, avg_level: 1.8 },
+    { id: 3, name: "Отбор в кадровый резерв", participants: 5, exercises: 9, processed: 2, avg_level: 1.4 },
+  ],
+  catalog: { total: 5, usable: 3, needs_notebook: 1, draft: 1 },
 };
 
 const demoUnderstanding: Understanding = {
@@ -295,6 +301,25 @@ export const demoApi = {
     centers.unshift(c);
     return c;
   },
+  async deleteCenter(id: number) {
+    await sleep(300);
+    const i = centers.findIndex((c) => c.id === id);
+    if (i >= 0) centers.splice(i, 1);
+    return { ok: true };
+  },
+  async deleteParticipant(id: number) {
+    await sleep(300);
+    const i = participants.findIndex((p) => p.id === id);
+    if (i >= 0) participants.splice(i, 1);
+    return { ok: true };
+  },
+  async deleteExercise(id: number) {
+    await sleep(300);
+    const i = exercises.findIndex((e) => e.id === id);
+    if (i >= 0) exercises.splice(i, 1);
+    return { ok: true };
+  },
+
   async getCenter(id: number) {
     await sleep(150);
     return centers.find((c) => c.id === id) ?? notFound("Центр");

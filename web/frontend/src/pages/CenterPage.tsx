@@ -1,11 +1,13 @@
 import { useEffect, useState } from "react";
-import { Link, useParams } from "react-router-dom";
+import { Link, useNavigate, useParams } from "react-router-dom";
 import { api } from "../api";
+import { ConfirmDelete } from "../components/ConfirmDelete";
 import type { Center, Participant } from "../types";
 
 export default function CenterPage() {
   const { id } = useParams();
   const centerId = Number(id);
+  const navigate = useNavigate();
   const [center, setCenter] = useState<Center | null>(null);
   const [parts, setParts] = useState<Participant[]>([]);
   const [code, setCode] = useState("");
@@ -35,6 +37,31 @@ export default function CenterPage() {
     } catch (e: any) {
       setError(e.message);
     } finally {
+      setBusy(false);
+    }
+  };
+
+  const removeParticipant = async (participantId: number) => {
+    setBusy(true);
+    setError("");
+    try {
+      await api.deleteParticipant(participantId);
+      await load();
+    } catch (e: any) {
+      setError(e.message);
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const removeCenter = async () => {
+    setBusy(true);
+    setError("");
+    try {
+      await api.deleteCenter(centerId);
+      navigate("/workspace");
+    } catch (e: any) {
+      setError(e.message);
       setBusy(false);
     }
   };
@@ -73,11 +100,31 @@ export default function CenterPage() {
             <li key={p.id}>
               <Link className="row-link" to={`/participants/${p.id}`}>
                 <span>Участник {p.code}</span>
-                <span className="pill">#{p.id}</span>
+                <span className="row-actions">
+                  <ConfirmDelete
+                    busy={busy}
+                    what={`участника ${p.code} со всеми его упражнениями и отчётами`}
+                    onConfirm={() => removeParticipant(p.id)}
+                  />
+                  <span className="pill">#{p.id}</span>
+                </span>
               </Link>
             </li>
           ))}
         </ul>
+      </div>
+
+      <div className="card danger-zone">
+        <h2>Удаление центра</h2>
+        <p className="muted">
+          Удалится сам центр, все его участники, упражнения, расшифровки и собранные отчёты.
+          Действие необратимо.
+        </p>
+        <ConfirmDelete
+          busy={busy}
+          what={`центр «${center?.name ?? ""}» целиком`}
+          onConfirm={removeCenter}
+        />
       </div>
     </>
   );

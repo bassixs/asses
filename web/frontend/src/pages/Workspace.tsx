@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
 import { api } from "../api";
+import { ConfirmDelete } from "../components/ConfirmDelete";
 import type { Center } from "../types";
 
 export default function Workspace() {
@@ -18,6 +19,19 @@ export default function Workspace() {
   useEffect(() => {
     load();
   }, []);
+
+  const remove = async (id: number) => {
+    setBusy(true);
+    setError("");
+    try {
+      await api.deleteCenter(id);
+      await load();
+    } catch (e: any) {
+      setError(e.message);
+    } finally {
+      setBusy(false);
+    }
+  };
 
   const create = async () => {
     if (!name.trim()) return;
@@ -111,6 +125,17 @@ export default function Workspace() {
                         ? "✓ все упражнения обработаны"
                         : `обработано ${pct}%`}
                     <span className="cc-go">Открыть →</span>
+                  </div>
+                  <div className="cc-actions">
+                    <ConfirmDelete
+                      busy={busy}
+                      what={
+                        done > 0
+                          ? `центр «${c.name}» — вместе с ним пропадут ${done} обработанных упражнений`
+                          : `центр «${c.name}»`
+                      }
+                      onConfirm={() => remove(c.id)}
+                    />
                   </div>
                 </Link>
               );

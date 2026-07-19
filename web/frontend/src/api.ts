@@ -74,6 +74,10 @@ const realApi = {
   createCenter: (name: string) => jsonPost<Center>("/centers", { name }),
   getCenter: (id: number) => req<Center>(`/centers/${id}`),
 
+  deleteCenter: (id: number) => req<{ ok: boolean }>(`/centers/${id}`, { method: "DELETE" }),
+  deleteParticipant: (id: number) => req<{ ok: boolean }>(`/participants/${id}`, { method: "DELETE" }),
+  deleteExercise: (id: number) => req<{ ok: boolean }>(`/exercises/${id}`, { method: "DELETE" }),
+
   listParticipants: (centerId: number) => req<Participant[]>(`/centers/${centerId}/participants`),
   getParticipant: (id: number) => req<Participant>(`/participants/${id}`),
   createParticipant: (centerId: number, code?: string) =>

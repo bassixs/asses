@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { Link, useParams } from "react-router-dom";
 import { api } from "../api";
+import { ConfirmDelete } from "../components/ConfirmDelete";
 import type { Exercise, ExerciseTemplate, Participant } from "../types";
 
 export default function ParticipantPage() {
@@ -35,6 +36,19 @@ export default function ParticipantPage() {
     try {
       await api.createExercise(part.center_id, pid, Number(templateId));
       setTemplateId("");
+      await load();
+    } catch (e: any) {
+      setError(e.message);
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const removeExercise = async (exerciseId: number) => {
+    setBusy(true);
+    setError("");
+    try {
+      await api.deleteExercise(exerciseId);
       await load();
     } catch (e: any) {
       setError(e.message);
@@ -101,7 +115,14 @@ export default function ParticipantPage() {
             <li key={e.id}>
               <Link className="row-link" to={`/assessments/${e.id}`}>
                 <span>{e.name}</span>
-                <span className="pill">#{e.id}</span>
+                <span className="row-actions">
+                  <ConfirmDelete
+                    busy={busy}
+                    what={`упражнение «${e.name}» и его результат`}
+                    onConfirm={() => removeExercise(e.id)}
+                  />
+                  <span className="pill">#{e.id}</span>
+                </span>
               </Link>
             </li>
           ))}

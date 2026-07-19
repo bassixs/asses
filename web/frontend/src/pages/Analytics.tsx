@@ -34,6 +34,31 @@ export default function Analytics() {
         <StatTile label="Отчётов собрано" value={c.reports} />
       </div>
 
+      <div className="card">
+        <h2>Готовность каталога упражнений</h2>
+        <p className="muted">
+          Выбрать при оценке можно только упражнения, которые ИИ разобрал, HR активировал и у
+          которых приложен блокнот.
+        </p>
+        <div className="catalog-row">
+          <div className="catalog-item ok">
+            <b>{ov.catalog.usable}</b>
+            <span>готовы к оценке</span>
+          </div>
+          <div className="catalog-item warn">
+            <b>{ov.catalog.needs_notebook}</b>
+            <span>ждут блокнота</span>
+          </div>
+          <div className="catalog-item draft">
+            <b>{ov.catalog.draft}</b>
+            <span>черновики</span>
+          </div>
+          <Link className="catalog-link" to="/exercises">
+            Открыть каталог →
+          </Link>
+        </div>
+      </div>
+
       {empty ? (
         <div className="card">
           <h2>Пока нет обработанных упражнений</h2>
@@ -66,6 +91,35 @@ export default function Analytics() {
               max={ov.level_max}
             />
           </div>
+
+          {ov.by_center.length > 0 && (
+            <div className="card">
+              <h2>По центрам оценки</h2>
+              <p className="muted">Прогресс обработки и средний уровень в каждом центре.</p>
+              <div className="center-rows">
+                {ov.by_center.map((b) => {
+                  const pct = b.exercises > 0 ? Math.round((b.processed / b.exercises) * 100) : 0;
+                  return (
+                    <Link className="center-row" to={`/centers/${b.id}`} key={b.id}>
+                      <div className="cr-top">
+                        <span className="cr-name">{b.name}</span>
+                        <span className="cr-level">
+                          {b.avg_level != null ? b.avg_level.toFixed(1) : "—"}
+                          <small>ур.</small>
+                        </span>
+                      </div>
+                      <div className="cr-meta muted">
+                        {b.participants} участников · {b.processed} из {b.exercises} упражнений обработано
+                      </div>
+                      <div className="cc-progress">
+                        <div className="cc-bar" style={{ width: `${pct}%` }} />
+                      </div>
+                    </Link>
+                  );
+                })}
+              </div>
+            </div>
+          )}
         </>
       )}
     </>

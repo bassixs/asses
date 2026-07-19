@@ -87,4 +87,13 @@ export interface Overview {
   measurements: number;
   avg_by_competence: { name: string; avg: number; count: number }[];
   level_bands: { name: string; count: number }[];
+  by_center: {
+    id: number;
+    name: string;
+    participants: number;
+    exercises: number;
+    processed: number;
+    avg_level: number | null;
+  }[];
+  catalog: { total: number; usable: number; needs_notebook: number; draft: number };
 }
