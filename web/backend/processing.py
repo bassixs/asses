@@ -53,23 +53,41 @@ def _offset_segments(segments: list[dict[str, Any]], offset: float) -> list[dict
     return [{"start": float(seg["start"]) + offset, "text": seg["text"]} for seg in segments]
 
 
+def _cleanup_derived(parts: list[tuple[Path, float]], original: Path) -> None:
+    """Delete the temporary files chunking/compression produced, never the original.
+
+    Anything whose path differs from the uploaded file is derived (a .chunkNNN piece or a
+    compressed copy) and is useless once transcribed — otherwise these pile up forever.
+    """
+    for path, _ in parts:
+        if path == original:
+            continue
+        try:
+            path.unlink(missing_ok=True)
+        except OSError:
+            logger.warning("Could not delete temporary audio file %s", path)
+
+
 async def transcribe_audio(audio_path: Path) -> tuple[str, list[dict[str, Any]]]:
     """Transcribe (with duration/size chunking) via AI Tunnel Whisper. Returns (text, segments)."""
     parts = await prepare_audio_chunks_for_upload(
         audio_path, max_bytes=settings.aitunnel_max_upload_bytes, provider_name="aitunnel"
     )
-    if len(parts) == 1:
-        path, offset = parts[0]
-        text, segments = await transcribe_aitunnel_with_segments(path)
-        return text, _offset_segments(segments, offset)
+    try:
+        if len(parts) == 1:
+            path, offset = parts[0]
+            text, segments = await transcribe_aitunnel_with_segments(path)
+            return text, _offset_segments(segments, offset)
 
-    transcripts: list[str] = []
-    all_segments: list[dict[str, Any]] = []
-    for path, offset in parts:
-        text, segments = await transcribe_aitunnel_with_segments(path)
-        transcripts.append(text)
-        all_segments.extend(_offset_segments(segments, offset))
-    return merge_chunk_transcripts(transcripts), all_segments
+        transcripts: list[str] = []
+        all_segments: list[dict[str, Any]] = []
+        for path, offset in parts:
+            text, segments = await transcribe_aitunnel_with_segments(path)
+            transcripts.append(text)
+            all_segments.extend(_offset_segments(segments, offset))
+        return merge_chunk_transcripts(transcripts), all_segments
+    finally:
+        _cleanup_derived(parts, audio_path)
 
 
 async def process_audio_exercise(session: AsyncSession, exercise_id: int) -> None:

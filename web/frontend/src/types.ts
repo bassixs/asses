@@ -97,3 +97,13 @@ export interface Overview {
   }[];
   catalog: { total: number; usable: number; needs_notebook: number; draft: number };
 }
+
+export interface Storage {
+  total_files: number;
+  total_size: number;
+  orphan_count: number;
+  orphan_size: number;
+  skipped_recent: number;
+  min_age_minutes: number;
+  orphans: { name: string; size: number; age_hours: number }[];
+}

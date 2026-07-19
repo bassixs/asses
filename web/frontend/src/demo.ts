@@ -192,7 +192,42 @@ const templates: ExerciseTemplate[] = [
   },
 ];
 
+let demoStorage = {
+  total_files: 23,
+  total_size: 87_500_000,
+  orphan_count: 13,
+  orphan_size: 16_100_000,
+  skipped_recent: 1,
+  min_age_minutes: 60,
+  orphans: [
+    { name: "instruction_818e671cfe82.pdf", size: 9_200_000, age_hours: 72.4 },
+    { name: "audio_ed31a11d97a0.aitunnel.chunk001.mp3", size: 2_400_000, age_hours: 51.2 },
+    { name: "audio_ed31a11d97a0.aitunnel.chunk002.mp3", size: 2_400_000, age_hours: 51.2 },
+    { name: "audio_ed31a11d97a0.aitunnel.chunk003.mp3", size: 1_460_000, age_hours: 51.2 },
+    { name: "participant_3_report.pptx", size: 120_000, age_hours: 96.0 },
+  ],
+};
+
 export const demoApi = {
+  async getStorage() {
+    await sleep(250);
+    return { ...demoStorage };
+  },
+  async cleanupStorage() {
+    await sleep(900);
+    const freed = demoStorage.orphan_size;
+    const deleted = demoStorage.orphan_count;
+    demoStorage = {
+      ...demoStorage,
+      total_files: demoStorage.total_files - deleted,
+      total_size: demoStorage.total_size - freed,
+      orphan_count: 0,
+      orphan_size: 0,
+      orphans: [],
+    };
+    return { ok: true, deleted, freed };
+  },
+
   async listTemplates(usableOnly = false) {
     await sleep(250);
     return usableOnly ? templates.filter((t) => t.is_usable) : [...templates];

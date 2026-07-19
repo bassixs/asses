@@ -6,6 +6,7 @@ import type {
   ExerciseTemplate,
   Overview,
   Participant,
+  Storage,
 } from "./types";
 
 export { IS_DEMO };
@@ -69,6 +70,10 @@ async function downloadFile(path: string, method: "GET" | "POST" = "GET"): Promi
 
 const realApi = {
   getOverview: () => req<Overview>("/overview"),
+
+  getStorage: () => req<Storage>("/storage"),
+  cleanupStorage: () =>
+    jsonPost<{ ok: boolean; deleted: number; freed: number }>("/storage/cleanup", {}),
 
   listCenters: () => req<Center[]>("/centers"),
   createCenter: (name: string) => jsonPost<Center>("/centers", { name }),
