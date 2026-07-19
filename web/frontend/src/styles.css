@@ -1844,6 +1844,201 @@ button.danger:hover:not(:disabled) {
   }
 }
 
+/* ============================================================
+   Mobile
+   ============================================================ */
+
+@media (max-width: 720px) {
+  /* Меню в 5 пунктов переносилось на 4 строки и съедало треть экрана.
+     Теперь оно одной строкой во всю ширину с горизонтальной прокруткой. */
+  .topbar {
+    padding: 12px 16px;
+    gap: 10px;
+  }
+  .brand {
+    font-size: 16px;
+  }
+  .topbar .tag {
+    display: none; /* декоративная подпись — на телефоне место дороже */
+  }
+  .mainnav {
+    order: 3;
+    flex: 0 0 100%;
+    justify-content: flex-start;
+    flex-wrap: nowrap;
+    overflow-x: auto;
+    gap: 6px;
+    margin: 0 -16px;
+    padding: 2px 16px;
+    scrollbar-width: none;
+    -webkit-overflow-scrolling: touch;
+  }
+  .mainnav::-webkit-scrollbar {
+    display: none;
+  }
+  .mainnav a {
+    white-space: nowrap;
+    padding: 8px 14px;
+    font-size: 13px;
+  }
+
+  .container {
+    padding: 20px 14px 60px;
+  }
+  .card {
+    padding: 18px 16px;
+  }
+  h1 {
+    font-size: 21px;
+  }
+  .page-head h1 {
+    font-size: 24px;
+  }
+  .section {
+    margin: 34px 0;
+  }
+
+  /* hero */
+  .hero {
+    padding: 30px 0 22px;
+  }
+  .hero-xl {
+    padding: 34px 0 26px;
+  }
+  .hero p {
+    font-size: 15px;
+  }
+  .hero-cta {
+    flex-direction: column;
+    gap: 10px;
+    margin-top: 22px;
+  }
+  .hero-cta .btn {
+    width: 100%;
+    justify-content: center;
+  }
+  .live-strip {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 10px;
+    margin-top: 26px;
+  }
+  .live-stat {
+    padding: 14px 10px;
+  }
+  .live-stat b {
+    font-size: 24px;
+  }
+  .hero-stats {
+    gap: 16px;
+  }
+
+  .claim {
+    padding: 20px 18px;
+  }
+  .claim b {
+    font-size: 32px;
+  }
+  .ba-col {
+    padding: 20px 18px;
+  }
+
+  /* формы: поле и кнопка на всю ширину, без тесноты */
+  .row {
+    gap: 8px;
+  }
+  .row input[type="text"],
+  .row select {
+    min-width: 0;
+    flex: 1 1 100%;
+  }
+  .row button {
+    width: 100%;
+  }
+
+  /* строки списков: действия переносятся вниз, а не сжимают название */
+  .list.rows .row-link {
+    flex-wrap: wrap;
+    padding: 13px 14px;
+    gap: 8px;
+  }
+  /* Подтверждение удаления внутри строки уезжало за край экрана, и кнопки
+     «Да, удалить» / «Отмена» становились недоступны. Переносим их на свои строки. */
+  .row-actions {
+    flex: 1 1 100%;
+    flex-wrap: wrap;
+    justify-content: space-between;
+    gap: 8px;
+  }
+  .confirm-del {
+    flex: 1 1 100%;
+    flex-wrap: wrap;
+    justify-content: flex-start;
+  }
+  .confirm-text {
+    flex: 1 1 100%;
+  }
+  .confirm-del button {
+    width: auto;
+    flex: 0 0 auto;
+  }
+  .file-list li {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 3px;
+  }
+  .file-list li span {
+    overflow-wrap: anywhere;
+  }
+
+  /* аналитика */
+  .stat-value {
+    font-size: 30px;
+  }
+  .catalog-row {
+    gap: 10px;
+  }
+  .catalog-item {
+    flex: 1 1 100%;
+  }
+  .catalog-link {
+    margin-left: 0;
+  }
+  .catalog-row button {
+    width: 100%;
+  }
+  .cc-stats {
+    gap: 16px;
+  }
+
+  /* вход */
+  .login-screen {
+    padding: 18px;
+  }
+  .login-card {
+    padding: 28px 22px 22px;
+  }
+  .login-card h1 {
+    font-size: 22px;
+  }
+
+  .footer {
+    padding: 24px 14px 32px;
+  }
+}
+
+@media (max-width: 400px) {
+  .hero-xl h1 {
+    font-size: 29px;
+  }
+  .live-stat b {
+    font-size: 21px;
+  }
+  .live-stat span {
+    font-size: 11px;
+  }
+}
+
 /* ---- footer ---- */
 .footer {
   text-align: center;
