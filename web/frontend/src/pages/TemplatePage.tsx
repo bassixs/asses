@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { Link, useParams } from "react-router-dom";
 import { api } from "../api";
 import { ConfirmDelete } from "../components/ConfirmDelete";
+import { FileDrop } from "../components/FileDrop";
 import type { ExerciseTemplate } from "../types";
 import { StatusBadge } from "./ExerciseLibrary";
 
@@ -213,16 +214,13 @@ export default function TemplatePage() {
               </div>
             )}
           </div>
-          <input
-            type="file"
+          <FileDrop
             accept=".pdf,.docx,.txt,.md"
             multiple
             disabled={busy}
-            onChange={(e) => {
-              const files = Array.from(e.target.files ?? []);
-              e.target.value = ""; // чтобы можно было выбрать тот же файл повторно
-              if (files.length) uploadMaterials(files);
-            }}
+            title="Перетащите файлы или нажмите"
+            hint="PDF, DOCX, TXT, MD — можно сразу несколько"
+            onFiles={uploadMaterials}
           />
           {progress && <div className="ok">{progress}</div>}
         </div>
@@ -238,14 +236,12 @@ export default function TemplatePage() {
               </span>
             )}
           </p>
-          <input
-            type="file"
+          <FileDrop
             accept=".xlsx"
             disabled={busy}
-            onChange={(e) => {
-              const f = e.target.files?.[0];
-              if (f) wrap(() => api.uploadTemplateNotebook(tid, f));
-            }}
+            title="Перетащите блокнот или нажмите"
+            hint="Пустой .xlsx с компетенциями и индикаторами"
+            onFiles={(files) => wrap(() => api.uploadTemplateNotebook(tid, files[0]))}
           />
         </div>
 

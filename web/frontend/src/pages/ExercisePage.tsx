@@ -1,9 +1,36 @@
 import { useEffect, useRef, useState } from "react";
 import { Link, useParams } from "react-router-dom";
 import { api } from "../api";
+import { FileDrop } from "../components/FileDrop";
 import type { Exercise, ExerciseStatus } from "../types";
 
 type Method = "" | "audio" | "filled";
+
+const STAGES = ["Расшифровываю запись", "Различаю роли в диалоге", "Оцениваю индикаторы", "Заполняю блокнот"];
+
+/** Animated multi-minute-processing indicator: cycles through the pipeline stages
+ *  so the wait reads as progress rather than a frozen screen. */
+function Processing() {
+  const [i, setI] = useState(0);
+  useEffect(() => {
+    const t = window.setInterval(() => setI((n) => (n + 1) % STAGES.length), 2600);
+    return () => window.clearInterval(t);
+  }, []);
+  return (
+    <div className="processing">
+      <span className="proc-spinner" aria-hidden="true" />
+      <div className="proc-body">
+        <b>Идёт обработка…</b>
+        <span className="proc-stage">{STAGES[i]}</span>
+        <div className="proc-dots" aria-hidden="true">
+          {STAGES.map((_, n) => (
+            <span key={n} className={n <= i ? "on" : ""} />
+          ))}
+        </div>
+      </div>
+    </div>
+  );
+}
 
 export default function ExercisePage() {
   const { id } = useParams();
@@ -71,14 +98,6 @@ export default function ExercisePage() {
 
   const levels = status?.levels ?? {};
   const done = status?.has_result;
-  const stageText =
-    status?.stage === "processing"
-      ? "⏳ обработка…"
-      : status?.stage === "error"
-        ? "⚠️ ошибка"
-        : status?.stage === "done"
-          ? "✅ готово"
-          : status?.stage ?? "";
 
   return (
     <>
@@ -144,11 +163,12 @@ export default function ExercisePage() {
               Блокнот наблюдателя уже взят из каталога — загрузите только запись. Система расшифрует
               её, разметит роли и заполнит блокнот.
             </p>
-            <input
-              type="file"
+            <FileDrop
               accept="audio/*,.mp3,.ogg,.m4a,.wav"
               disabled={busy}
-              onChange={(e) => onAudio(e.target.files?.[0])}
+              title="Перетащите аудио или нажмите"
+              hint="mp3, m4a, ogg, wav — длинные записи разобьются сами"
+              onFiles={(files) => onAudio(files[0])}
             />
           </div>
         )}
@@ -157,7 +177,13 @@ export default function ExercisePage() {
           <div className="step active">
             <h2>2. Заполненный блокнот</h2>
             <p className="muted">Наблюдатель уже проставил статусы и уровни — система прочитает их как есть.</p>
-            <input type="file" accept=".xlsx" disabled={busy} onChange={(e) => onFilled(e.target.files?.[0])} />
+            <FileDrop
+              accept=".xlsx"
+              disabled={busy}
+              title="Перетащите блокнот или нажмите"
+              hint="Файл .xlsx с проставленными статусами и уровнями"
+              onFiles={(files) => onFilled(files[0])}
+            />
           </div>
         )}
 
@@ -167,10 +193,15 @@ export default function ExercisePage() {
       {status && status.stage !== "idle" && (
         <div className="card">
           <h2>Результат оценки</h2>
-          <p className="muted">
-            Статус: {stageText}
-            {status.message ? ` — ${status.message}` : ""}
-          </p>
+
+          {status.stage === "processing" ? (
+            <Processing />
+          ) : (
+            <span className={`state-badge ${status.stage === "error" ? "err" : "ok"}`}>
+              {status.stage === "error" ? "⚠ Ошибка" : "✓ Готово"}
+              {status.stage === "error" && status.message ? ` — ${status.message}` : ""}
+            </span>
+          )}
 
           {done && (
             <div className="assess-meta">

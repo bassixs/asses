@@ -1050,6 +1050,165 @@ select option {
   font-size: 13px;
 }
 
+/* ---- зона загрузки файла ---- */
+.filedrop {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  padding: 20px;
+  border: 1.5px dashed var(--line);
+  border-radius: 15px;
+  background: rgba(198, 242, 78, 0.03);
+  cursor: pointer;
+  transition:
+    border-color 0.18s ease,
+    background 0.18s ease,
+    transform 0.12s ease;
+}
+.filedrop:hover,
+.filedrop:focus-visible {
+  outline: none;
+  border-color: var(--accent);
+  background: rgba(198, 242, 78, 0.07);
+}
+.filedrop.over {
+  border-color: var(--accent);
+  background: rgba(198, 242, 78, 0.12);
+  transform: scale(1.006);
+}
+.filedrop.off {
+  opacity: 0.5;
+  cursor: default;
+}
+.fd-icon {
+  flex: none;
+  width: 44px;
+  height: 44px;
+  border-radius: 12px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border: 1px solid var(--line);
+  background: rgba(198, 242, 78, 0.08);
+}
+.fd-icon svg {
+  width: 22px;
+  height: 22px;
+  stroke: var(--accent);
+}
+.fd-text {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  min-width: 0;
+}
+.fd-text b {
+  font-size: 14.5px;
+  font-weight: 700;
+}
+.fd-text span {
+  color: var(--muted);
+  font-size: 12.5px;
+}
+.fd-picked {
+  flex: 1 1 100%;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  margin-top: 8px;
+  padding-top: 10px;
+  border-top: 1px solid var(--line-soft);
+}
+.fd-picked span {
+  font-size: 12.5px;
+  color: var(--accent);
+  overflow-wrap: anywhere;
+}
+.filedrop {
+  flex-wrap: wrap;
+}
+
+/* ---- индикатор обработки ---- */
+.processing {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  padding: 6px 0 2px;
+}
+.proc-spinner {
+  flex: none;
+  width: 30px;
+  height: 30px;
+  border-radius: 50%;
+  border: 3px solid rgba(198, 242, 78, 0.18);
+  border-top-color: var(--accent);
+  animation: spin 0.8s linear infinite;
+}
+@keyframes spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+.proc-body {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+.proc-body b {
+  font-size: 15px;
+}
+.proc-stage {
+  color: var(--accent);
+  font-size: 13px;
+  font-weight: 600;
+}
+.proc-dots {
+  display: flex;
+  gap: 6px;
+  margin-top: 4px;
+}
+.proc-dots span {
+  width: 22px;
+  height: 3px;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.1);
+  transition: background 0.3s ease;
+}
+.proc-dots span.on {
+  background: var(--accent);
+}
+
+/* ---- бейдж состояния ---- */
+.state-badge {
+  display: inline-flex;
+  align-items: center;
+  padding: 8px 16px;
+  border-radius: 999px;
+  font-size: 13.5px;
+  font-weight: 700;
+}
+.state-badge.ok {
+  color: var(--accent);
+  background: rgba(198, 242, 78, 0.1);
+  border: 1px solid var(--line);
+}
+.state-badge.err {
+  color: var(--err);
+  background: rgba(255, 107, 107, 0.1);
+  border: 1px solid rgba(255, 107, 107, 0.25);
+}
+
+/* ---- крошки ---- */
+.crumbs {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+}
+.crumbs::before {
+  content: "←";
+  color: var(--muted);
+}
+
 /* ---- выбор способа оценки ---- */
 .method-grid {
   display: grid;
