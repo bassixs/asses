@@ -55,17 +55,42 @@ def expected_password() -> str:
 
 
 def auth_required() -> bool:
-    """Auth is disabled only when no password is configured at all."""
+    """Auth is disabled only when no bootstrap password is configured at all."""
     return bool(expected_password())
 
 
-def check_credentials(username: str, password: str) -> bool:
-    """Compare both fields in constant time (login is case-insensitive)."""
-    user_ok = hmac.compare_digest(
-        (username or "").strip().casefold(), settings.web_login.casefold()
-    )
-    pass_ok = hmac.compare_digest(password or "", expected_password())
-    return user_ok and pass_ok
+# ---- password hashing (PBKDF2-HMAC-SHA256, stdlib only) ------------------------------------
+
+_PBKDF2_ITERATIONS = 210_000
+_PASSWORD_ALPHABET = "abcdefghijkmnpqrstuvwxyzABCDEFGHJKLMNPQRSTUVWXYZ23456789"  # no ambiguous chars
+
+
+def hash_password(password: str) -> str:
+    salt = secrets.token_bytes(16)
+    digest = hashlib.pbkdf2_hmac("sha256", password.encode("utf-8"), salt, _PBKDF2_ITERATIONS)
+    return f"pbkdf2_sha256${_PBKDF2_ITERATIONS}${salt.hex()}${digest.hex()}"
+
+
+def verify_password(password: str, stored: str) -> bool:
+    try:
+        algo, iters, salt_hex, hash_hex = stored.split("$")
+        if algo != "pbkdf2_sha256":
+            return False
+        digest = hashlib.pbkdf2_hmac(
+            "sha256", (password or "").encode("utf-8"), bytes.fromhex(salt_hex), int(iters)
+        )
+    except (ValueError, TypeError):
+        return False
+    return hmac.compare_digest(digest.hex(), hash_hex)
+
+
+def generate_password(length: int = 14) -> str:
+    """A strong, human-readable password (no look-alike characters)."""
+    return "".join(secrets.choice(_PASSWORD_ALPHABET) for _ in range(length))
+
+
+def normalize_username(username: str) -> str:
+    return (username or "").strip().casefold()
 
 
 def _sign(payload: str) -> str:

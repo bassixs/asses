@@ -1729,11 +1729,122 @@ button.danger:hover:not(:disabled) {
   font-size: 12px;
 }
 
-/* ---- logout ---- */
+/* ---- пользователь в шапке + выход ---- */
 .topbar-right {
   display: inline-flex;
   align-items: center;
   gap: 10px;
+}
+.who {
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--ink);
+  padding: 6px 12px;
+  border-radius: 999px;
+  background: rgba(198, 242, 78, 0.08);
+  border: 1px solid var(--line);
+  max-width: 140px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* ---- страница пользователей ---- */
+.chk {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  color: var(--muted);
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+  flex: none;
+}
+.chk input {
+  width: 16px;
+  height: 16px;
+  accent-color: var(--accent);
+}
+.user-rows {
+  display: grid;
+  gap: 10px;
+}
+.user-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  flex-wrap: wrap;
+  padding: 14px 16px;
+  border: 1px solid var(--line-soft);
+  border-radius: 14px;
+  background: rgba(255, 255, 255, 0.02);
+}
+.user-row.off {
+  opacity: 0.55;
+}
+.ur-main {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  min-width: 0;
+}
+.ur-name {
+  font-weight: 700;
+  font-size: 15px;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+}
+.ur-you {
+  font-size: 11px;
+  font-weight: 700;
+  color: var(--accent);
+  background: rgba(198, 242, 78, 0.12);
+  border: 1px solid var(--line);
+  padding: 2px 8px;
+  border-radius: 999px;
+}
+.ur-sub {
+  font-size: 12.5px;
+}
+.ur-actions {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+/* ---- показ пароля один раз ---- */
+.pw-reveal {
+  display: grid;
+  gap: 12px;
+}
+.pw-head {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+.pw-head b {
+  font-size: 15px;
+}
+.pw-value {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex-wrap: wrap;
+  padding: 14px 16px;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  background: rgba(198, 242, 78, 0.06);
+}
+.pw-value code {
+  font-family: "SFMono-Regular", Consolas, monospace;
+  font-size: 20px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  color: var(--accent);
+  overflow-wrap: anywhere;
 }
 .logout {
   background: transparent;

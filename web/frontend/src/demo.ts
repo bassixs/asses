@@ -6,6 +6,7 @@ import type {
   Overview,
   Participant,
   Understanding,
+  WebUser,
 } from "./types";
 
 /**
@@ -84,6 +85,12 @@ const idle = (): ExerciseStatus => ({ stage: "idle", message: "", has_result: fa
 function notFound(what: string): never {
   throw new Error(`${what} не найден (демо)`);
 }
+
+const demoUsers: WebUser[] = [
+  { id: 1, username: "hr40", is_admin: true, is_active: true, created_at: new Date().toISOString(), last_login: new Date().toISOString(), is_self: true },
+  { id: 2, username: "анна", is_admin: false, is_active: true, created_at: new Date().toISOString(), last_login: new Date(Date.now() - 86400000).toISOString(), is_self: false },
+  { id: 3, username: "иван", is_admin: false, is_active: false, created_at: new Date().toISOString(), last_login: null, is_self: false },
+];
 
 const demoOverview: Overview = {
   counts: { centers: 3, participants: 24, exercises: 61, processed: 52, reports: 19 },
@@ -229,7 +236,7 @@ export const demoApi = {
   // Витрина без бэкенда — вход не требуется.
   async login(username: string) {
     await sleep(200);
-    return { ok: true, username };
+    return { ok: true, username, is_admin: true };
   },
   async logout() {
     await sleep(100);
@@ -237,7 +244,48 @@ export const demoApi = {
   },
   async me() {
     await sleep(100);
-    return { authenticated: true, username: "демо" };
+    return { authenticated: true, username: "демо", is_admin: true };
+  },
+
+  async listUsers() {
+    await sleep(200);
+    return [...demoUsers];
+  },
+  async createUser(username: string, isAdmin: boolean) {
+    await sleep(300);
+    const u = {
+      id: ++nextId,
+      username,
+      is_admin: isAdmin,
+      is_active: true,
+      created_at: new Date().toISOString(),
+      last_login: null,
+      is_self: false,
+      password: "Demo" + Math.random().toString(36).slice(2, 8),
+    };
+    demoUsers.push({ ...u, password: undefined });
+    return u;
+  },
+  async resetUserPassword(id: number) {
+    await sleep(300);
+    const u = demoUsers.find((x) => x.id === id)!;
+    return { ...u, password: "Demo" + Math.random().toString(36).slice(2, 8) };
+  },
+  async patchUser(id: number, patch: { is_active?: boolean; is_admin?: boolean }) {
+    await sleep(200);
+    const u = demoUsers.find((x) => x.id === id)!;
+    Object.assign(u, patch);
+    return u;
+  },
+  async deleteUser(id: number) {
+    await sleep(250);
+    const i = demoUsers.findIndex((x) => x.id === id);
+    if (i >= 0) demoUsers.splice(i, 1);
+    return { ok: true };
+  },
+  async changeOwnPassword() {
+    await sleep(300);
+    return { ok: true, password: "Demo" + Math.random().toString(36).slice(2, 8) };
   },
 
   async getStorage() {

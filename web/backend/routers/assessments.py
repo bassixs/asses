@@ -12,9 +12,10 @@ from bot.models import (
     ObserverNotebook,
     Participant,
     ParticipantReport,
+    WebUser,
 )
 from bot.services.exercise_understanding import render_understanding_brief
-from web.backend.deps import WEB_OWNER_ID, get_session
+from web.backend.deps import WEB_OWNER_ID, CurrentUser, current_user, get_session
 from web.backend.purge import delete_center, delete_exercises, delete_participants
 from web.backend.schemas import (
     CenterCreate,
@@ -71,18 +72,27 @@ def _exercise_out(
 # ---- centers -------------------------------------------------------------------------------
 
 @router.post("/centers", response_model=CenterOut)
-async def create_center(payload: CenterCreate, session: AsyncSession = Depends(get_session)) -> CenterOut:
-    center = AssessmentCenter(chat_id=WEB_OWNER_ID, user_id=WEB_OWNER_ID, name=payload.name.strip())
+async def create_center(
+    payload: CenterCreate,
+    session: AsyncSession = Depends(get_session),
+    user: CurrentUser = Depends(current_user),
+) -> CenterOut:
+    center = AssessmentCenter(chat_id=WEB_OWNER_ID, user_id=user.id, name=payload.name.strip())
     session.add(center)
     await session.commit()
     await session.refresh(center)
-    return CenterOut(id=center.id, name=center.name, created_at=center.created_at)
+    return CenterOut(
+        id=center.id, name=center.name, created_at=center.created_at, created_by=user.username
+    )
 
 
 @router.get("/centers", response_model=list[CenterOut])
 async def list_centers(session: AsyncSession = Depends(get_session)) -> list[CenterOut]:
     rows = list(await session.scalars(select(AssessmentCenter).order_by(AssessmentCenter.id.desc())))
 
+    creators = dict(
+        (await session.execute(select(WebUser.id, WebUser.username))).all()
+    )
     participants = dict(
         (await session.execute(
             select(Participant.center_id, func.count()).group_by(Participant.center_id)
@@ -110,6 +120,7 @@ async def list_centers(session: AsyncSession = Depends(get_session)) -> list[Cen
             participants=participants.get(c.id, 0),
             exercises=exercises.get(c.id, 0),
             processed=processed.get(c.id, 0),
+            created_by=creators.get(c.user_id),
         )
         for c in rows
     ]
@@ -161,6 +172,7 @@ async def remove_exercise(exercise_id: int, session: AsyncSession = Depends(get_
 async def create_participant(
     payload: ParticipantCreate,
     session: AsyncSession = Depends(get_session),
+    user: CurrentUser = Depends(current_user),
 ) -> ParticipantOut:
     center = await session.get(AssessmentCenter, payload.center_id)
     if center is None:
@@ -169,7 +181,7 @@ async def create_participant(
     participant = Participant(
         center_id=center.id,
         chat_id=WEB_OWNER_ID,
-        user_id=WEB_OWNER_ID,
+        user_id=user.id,
         full_name=(payload.code or "").strip(),
     )
     session.add(participant)
@@ -224,7 +236,11 @@ async def get_participant(participant_id: int, session: AsyncSession = Depends(g
 # ---- exercises -----------------------------------------------------------------------------
 
 @router.post("/exercises", response_model=ExerciseOut)
-async def create_exercise(payload: ExerciseCreate, session: AsyncSession = Depends(get_session)) -> ExerciseOut:
+async def create_exercise(
+    payload: ExerciseCreate,
+    session: AsyncSession = Depends(get_session),
+    user: CurrentUser = Depends(current_user),
+) -> ExerciseOut:
     participant = await session.get(Participant, payload.participant_id)
     if participant is None or participant.center_id != payload.center_id:
         raise HTTPException(status_code=404, detail="Участник не найден в этом центре")
@@ -248,7 +264,7 @@ async def create_exercise(payload: ExerciseCreate, session: AsyncSession = Depen
         center_id=payload.center_id,
         participant_id=payload.participant_id,
         chat_id=WEB_OWNER_ID,
-        user_id=WEB_OWNER_ID,
+        user_id=user.id,
         template_id=template.id,
         name=template.name,
         instructions_text=context or template.instructions_text,

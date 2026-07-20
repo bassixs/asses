@@ -16,6 +16,7 @@ class CenterOut(BaseModel):
     participants: int = 0
     exercises: int = 0
     processed: int = 0
+    created_by: str | None = None
 
 
 class ParticipantCreate(BaseModel):

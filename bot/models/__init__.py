@@ -7,6 +7,7 @@ from bot.models.job import MediaProcessingJob
 from bot.models.assessment import AssessmentResult
 from bot.models.notebook import NotebookFillResult, ObserverNotebook
 from bot.models.record import InterviewRecord
+from bot.models.user import WebUser
 
 __all__ = [
     "AssessmentCenter",
@@ -22,4 +23,5 @@ __all__ = [
     "ObserverNotebook",
     "Participant",
     "ParticipantReport",
+    "WebUser",
 ]

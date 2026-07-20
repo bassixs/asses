@@ -5,6 +5,24 @@ export interface Center {
   participants?: number;
   exercises?: number;
   processed?: number;
+  created_by?: string | null;
+}
+
+export interface WebUser {
+  id: number;
+  username: string;
+  is_admin: boolean;
+  is_active: boolean;
+  created_at?: string | null;
+  last_login?: string | null;
+  is_self?: boolean;
+  password?: string; // returned once, only right after create / reset
+}
+
+export interface Me {
+  authenticated: boolean;
+  username: string;
+  is_admin: boolean;
 }
 
 export interface Participant {

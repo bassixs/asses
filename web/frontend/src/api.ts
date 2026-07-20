@@ -4,9 +4,11 @@ import type {
   Exercise,
   ExerciseStatus,
   ExerciseTemplate,
+  Me,
   Overview,
   Participant,
   Storage,
+  WebUser,
 } from "./types";
 
 export { IS_DEMO };
@@ -79,9 +81,23 @@ async function downloadFile(path: string, method: "GET" | "POST" = "GET"): Promi
 
 const realApi = {
   login: (username: string, password: string) =>
-    jsonPost<{ ok: boolean; username: string }>("/auth/login", { username, password }),
+    jsonPost<{ ok: boolean; username: string; is_admin: boolean }>("/auth/login", { username, password }),
   logout: () => jsonPost<{ ok: boolean }>("/auth/logout", {}),
-  me: () => req<{ authenticated: boolean; username: string }>("/auth/me"),
+  me: () => req<Me>("/auth/me"),
+
+  // ---- users (admin) ----
+  listUsers: () => req<WebUser[]>("/users"),
+  createUser: (username: string, isAdmin: boolean) =>
+    jsonPost<WebUser>("/users", { username, is_admin: isAdmin }),
+  resetUserPassword: (id: number) => jsonPost<WebUser>(`/users/${id}/reset-password`, {}),
+  patchUser: (id: number, patch: { is_active?: boolean; is_admin?: boolean }) =>
+    req<WebUser>(`/users/${id}`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(patch),
+    }),
+  deleteUser: (id: number) => req<{ ok: boolean }>(`/users/${id}`, { method: "DELETE" }),
+  changeOwnPassword: () => jsonPost<{ ok: boolean; password: string }>("/users/me/password", {}),
 
   getOverview: () => req<Overview>("/overview"),
 

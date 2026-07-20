@@ -11,6 +11,8 @@ import ParticipantPage from "./pages/ParticipantPage";
 import ExercisePage from "./pages/ExercisePage";
 import ExerciseLibrary from "./pages/ExerciseLibrary";
 import TemplatePage from "./pages/TemplatePage";
+import UsersPage from "./pages/UsersPage";
+import type { Me } from "./types";
 
 // На GitHub Pages сайт живёт в подпапке (/asses/) — базовый путь берём из сборки.
 const basename = import.meta.env.BASE_URL.replace(/\/$/, "");
@@ -25,13 +27,13 @@ const NAV = [
 
 export default function App() {
   // null = ещё проверяем сессию, чтобы не мигать формой входа у вошедшего пользователя
-  const [authed, setAuthed] = useState<boolean | null>(null);
+  const [me, setMe] = useState<Me | null | undefined>(undefined);
 
   const check = () =>
     api
       .me()
-      .then(() => setAuthed(true))
-      .catch(() => setAuthed(false));
+      .then(setMe)
+      .catch(() => setMe(null));
 
   useEffect(() => {
     check();
@@ -41,12 +43,12 @@ export default function App() {
     try {
       await api.logout();
     } finally {
-      setAuthed(false);
+      setMe(null);
     }
   };
 
-  if (authed === null) return <div className="boot">Загрузка…</div>;
-  if (!authed) return <Login onSuccess={() => setAuthed(true)} />;
+  if (me === undefined) return <div className="boot">Загрузка…</div>;
+  if (!me) return <Login onSuccess={check} />;
 
   return (
     <BrowserRouter basename={basename}>
@@ -61,14 +63,19 @@ export default function App() {
               {n.label}
             </NavLink>
           ))}
+          {me.is_admin && (
+            <NavLink to="/users" className={({ isActive }) => (isActive ? "active" : "")}>
+              Пользователи
+            </NavLink>
+          )}
         </nav>
         <span className="topbar-right">
-          <span className="tag">HR-инструмент</span>
-          {!IS_DEMO && (
-            <button className="logout" onClick={logout} title="Выйти из системы">
-              Выйти
-            </button>
-          )}
+          <span className="who" title={me.is_admin ? "Администратор" : "Специалист"}>
+            {me.username}
+          </span>
+          <button className="logout" onClick={logout} title="Выйти из системы">
+            Выйти
+          </button>
         </span>
       </header>
       {IS_DEMO && (
@@ -87,6 +94,7 @@ export default function App() {
           <Route path="/centers/:id" element={<CenterPage />} />
           <Route path="/participants/:id" element={<ParticipantPage />} />
           <Route path="/assessments/:id" element={<ExercisePage />} />
+          {me.is_admin && <Route path="/users" element={<UsersPage />} />}
         </Routes>
       </main>
       <footer className="footer">

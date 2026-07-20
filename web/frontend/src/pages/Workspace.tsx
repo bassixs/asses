@@ -99,6 +99,7 @@ export default function Workspace() {
                   {c.created_at && (
                     <div className="cc-date">
                       создан {new Date(c.created_at).toLocaleDateString("ru-RU")}
+                      {c.created_by ? ` · ${c.created_by}` : ""}
                     </div>
                   )}
                   <div className="cc-stats">

@@ -7,8 +7,12 @@ from fastapi import FastAPI, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, JSONResponse
 
-from bot.database import init_db
+from sqlalchemy import select
+
+from bot.database import async_session_maker, init_db
+from bot.models import WebUser
 from web.backend.auth import COOKIE_NAME, auth_required, verify_token
+from web.backend.deps import CurrentUser
 from web.backend.routers import (
     assessments,
     auth,
@@ -17,8 +21,10 @@ from web.backend.routers import (
     overview,
     reports,
     templates,
+    users,
 )
 from web.backend.seed import seed_builtin_templates
+from web.backend.seed_users import seed_bootstrap_admin
 
 _DIST = Path(__file__).resolve().parent.parent / "frontend" / "dist"
 
@@ -51,8 +57,17 @@ async def session_auth(request: Request, call_next):
     if not auth_required() or not path.startswith("/api/") or path in _PUBLIC_API:
         return await call_next(request)
 
-    if verify_token(request.cookies.get(COOKIE_NAME)):
-        return await call_next(request)
+    username = verify_token(request.cookies.get(COOKIE_NAME))
+    if username:
+        # Load the user so a deactivated/deleted account is locked out immediately,
+        # not only when its two-week token finally expires. One indexed query per API call.
+        async with async_session_maker() as session:
+            user = await session.scalar(select(WebUser).where(WebUser.username == username))
+        if user and user.is_active:
+            request.state.web_user = CurrentUser(
+                id=user.id, username=user.username, is_admin=user.is_admin
+            )
+            return await call_next(request)
     return JSONResponse({"detail": "Не выполнен вход"}, status_code=401)
 
 
@@ -63,11 +78,16 @@ app.include_router(maintenance.router, prefix="/api")
 app.include_router(overview.router, prefix="/api")
 app.include_router(reports.router, prefix="/api")
 app.include_router(templates.router, prefix="/api")
+app.include_router(users.router, prefix="/api")
 
 
 @app.on_event("startup")
 async def _on_startup() -> None:
     await init_db()
+    try:
+        await seed_bootstrap_admin()
+    except Exception:  # noqa: BLE001 - never let bootstrap keep the app from starting
+        logging.exception("Could not seed bootstrap admin user")
     try:
         await seed_builtin_templates()
     except Exception:  # noqa: BLE001 - seeding is a convenience, never a reason to refuse to boot
