@@ -100,12 +100,39 @@ export default function ExercisePage() {
 
         <div className={`step ${method ? "active" : ""}`}>
           <h2>1. Способ оценки</h2>
-          <div className="row">
-            <button className={method === "audio" ? "" : "ghost"} onClick={() => setMethod("audio")}>
-              🎙 По аудиозаписи
+          <div className="method-grid">
+            <button
+              className={`method-card ${method === "audio" ? "sel" : ""}`}
+              onClick={() => setMethod("audio")}
+            >
+              <span className="method-icon" aria-hidden="true">
+                <svg viewBox="0 0 24 24" fill="none" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round">
+                  <rect x="9" y="2.5" width="6" height="11" rx="3" />
+                  <path d="M5.5 11a6.5 6.5 0 0 0 13 0M12 17.5V21M8.5 21h7" />
+                </svg>
+              </span>
+              <span className="method-body">
+                <b>По аудиозаписи</b>
+                <span>ИИ расшифрует запись, разметит роли и заполнит блокнот сам.</span>
+              </span>
+              <span className="method-check" aria-hidden="true" />
             </button>
-            <button className={method === "filled" ? "" : "ghost"} onClick={() => setMethod("filled")}>
-              📊 Загрузить заполненный блокнот
+
+            <button
+              className={`method-card ${method === "filled" ? "sel" : ""}`}
+              onClick={() => setMethod("filled")}
+            >
+              <span className="method-icon" aria-hidden="true">
+                <svg viewBox="0 0 24 24" fill="none" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round">
+                  <rect x="3.5" y="4" width="17" height="16" rx="2" />
+                  <path d="M3.5 9h17M9 9v11M3.5 14.5h17" />
+                </svg>
+              </span>
+              <span className="method-body">
+                <b>Заполненный блокнот</b>
+                <span>Наблюдатель уже оценил вручную — система прочитает статусы как есть.</span>
+              </span>
+              <span className="method-check" aria-hidden="true" />
             </button>
           </div>
         </div>

@@ -1050,6 +1050,111 @@ select option {
   font-size: 13px;
 }
 
+/* ---- выбор способа оценки ---- */
+.method-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 12px;
+  margin-top: 4px;
+}
+@media (max-width: 640px) {
+  .method-grid {
+    grid-template-columns: 1fr;
+  }
+}
+.method-card {
+  position: relative;
+  display: flex;
+  align-items: flex-start;
+  gap: 14px;
+  text-align: left;
+  padding: 18px;
+  border-radius: 15px;
+  border: 1px solid var(--line-soft);
+  background: rgba(0, 0, 0, 0.22);
+  color: var(--ink);
+  cursor: pointer;
+  transition:
+    border-color 0.18s ease,
+    background 0.18s ease,
+    transform 0.18s ease;
+}
+.method-card:hover:not(:disabled) {
+  transform: translateY(-2px);
+  border-color: var(--line);
+  background: rgba(198, 242, 78, 0.04);
+  box-shadow: none;
+}
+.method-card.sel {
+  border-color: var(--accent);
+  background: rgba(198, 242, 78, 0.07);
+}
+.method-icon {
+  flex: none;
+  width: 42px;
+  height: 42px;
+  border-radius: 12px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border: 1px solid var(--line);
+  background: rgba(198, 242, 78, 0.08);
+  transition:
+    background 0.18s ease,
+    box-shadow 0.18s ease;
+}
+.method-icon svg {
+  width: 21px;
+  height: 21px;
+  stroke: var(--accent);
+}
+.method-card.sel .method-icon {
+  box-shadow: 0 0 18px -4px rgba(198, 242, 78, 0.6);
+}
+.method-body {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  min-width: 0;
+}
+.method-body b {
+  font-size: 15px;
+  font-weight: 700;
+  letter-spacing: -0.01em;
+}
+.method-body span {
+  color: var(--muted);
+  font-size: 12.5px;
+  line-height: 1.45;
+}
+.method-check {
+  position: absolute;
+  top: 14px;
+  right: 14px;
+  width: 18px;
+  height: 18px;
+  border-radius: 50%;
+  border: 1.5px solid var(--line);
+  transition:
+    border-color 0.18s ease,
+    background 0.18s ease;
+}
+.method-card.sel .method-check {
+  border-color: var(--accent);
+  background: var(--accent);
+}
+.method-card.sel .method-check::after {
+  content: "";
+  position: absolute;
+  left: 5px;
+  top: 2px;
+  width: 5px;
+  height: 9px;
+  border: solid var(--accent-ink);
+  border-width: 0 2px 2px 0;
+  transform: rotate(45deg);
+}
+
 /* ---- итог оценки упражнения ---- */
 .assess-meta {
   display: flex;
