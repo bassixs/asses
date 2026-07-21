@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import { Link, useParams } from "react-router-dom";
 import { api } from "../api";
 import { FileDrop } from "../components/FileDrop";
+import { CountUp } from "../components/Reveal";
 import type { Exercise, ExerciseStatus } from "../types";
 
 type Method = "" | "audio" | "filled";
@@ -223,15 +224,15 @@ export default function ExercisePage() {
           {done && status.counts && (
             <div className="counts-row">
               <div className="count yes">
-                <b>{status.counts["+"]}</b>
+                <b><CountUp value={status.counts["+"]} /></b>
                 <span>проявлено</span>
               </div>
               <div className="count no">
-                <b>{status.counts["-"]}</b>
+                <b><CountUp value={status.counts["-"]} /></b>
                 <span>не проявлено</span>
               </div>
               <div className="count nz">
-                <b>{status.counts["НЗ"]}</b>
+                <b><CountUp value={status.counts["НЗ"]} /></b>
                 <span>не замерялось</span>
               </div>
             </div>

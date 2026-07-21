@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
 import { api } from "../api";
 import { ConfirmDelete } from "../components/ConfirmDelete";
+import { CountUp } from "../components/Reveal";
 import type { Overview, Storage } from "../types";
 import { BandBar, BarList, Gauge, StatTile } from "../components/Charts";
 
@@ -125,10 +126,14 @@ export default function Analytics() {
       </div>
 
       <div className="stat-grid">
-        <StatTile label="Центров оценки" value={c.centers} />
-        <StatTile label="Участников" value={c.participants} />
-        <StatTile label="Упражнений обработано" value={c.processed} hint={`всего создано: ${c.exercises}`} />
-        <StatTile label="Отчётов собрано" value={c.reports} />
+        <StatTile label="Центров оценки" value={<CountUp value={c.centers} />} />
+        <StatTile label="Участников" value={<CountUp value={c.participants} />} />
+        <StatTile
+          label="Упражнений обработано"
+          value={<CountUp value={c.processed} />}
+          hint={`всего создано: ${c.exercises}`}
+        />
+        <StatTile label="Отчётов собрано" value={<CountUp value={c.reports} />} />
       </div>
 
       <div className="card">

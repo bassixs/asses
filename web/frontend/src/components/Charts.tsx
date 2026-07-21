@@ -1,4 +1,5 @@
 import type { ReactNode } from "react";
+import { useCountUp } from "./Reveal";
 
 /** Big headline metric. */
 export function StatTile({
@@ -66,7 +67,7 @@ export function BandBar({ data }: { data: { name: string; count: number }[] }) {
             <div
               key={d.name}
               className={`bandseg ${BAND_CLASS[i] ?? ""}`}
-              style={{ flexGrow: d.count }}
+              style={{ flexGrow: d.count, animationDelay: `${i * 140}ms` }}
               title={`${d.name}: ${d.count} (${Math.round((d.count / total) * 100)}%)`}
             />
           ),
@@ -105,12 +106,17 @@ export function Gauge({ value, max, caption }: { value: number; max: number; cap
     return `M ${x1} ${y1} A ${r} ${r} 0 ${large} 1 ${x2} ${y2}`;
   };
 
+  const shown = useCountUp(value, 1200, 1);
+
   return (
     <div className="gauge">
       <svg viewBox="0 0 160 160" width="160" height="160" role="img" aria-label={`${caption}: ${value} из ${max}`}>
         <path className="gauge-track" d={arc(start, start + sweep)} />
-        {frac > 0 && <path className="gauge-fill" d={arc(start, start + sweep * frac)} />}
-        <text x="80" y="76" className="gauge-num">{value.toFixed(1)}</text>
+        {frac > 0 && (
+          // pathLength=1 lets CSS draw any-length arc via a single stroke-dashoffset sweep.
+          <path className="gauge-fill" pathLength={1} d={arc(start, start + sweep * frac)} />
+        )}
+        <text x="80" y="76" className="gauge-num">{shown.toFixed(1)}</text>
         <text x="80" y="98" className="gauge-max">из {max}</text>
       </svg>
       <div className="gauge-caption">{caption}</div>

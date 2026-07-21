@@ -58,26 +58,23 @@ export function Reveal({
   );
 }
 
-/** Counts up to `value` once, easing out. Returns the number to render. */
-export function useCountUp(value: number, duration = 1100): number {
+/** Counts up to `value` once, easing out. `decimals` keeps fractional values (e.g. 1.9). */
+export function useCountUp(value: number, duration = 1100, decimals = 0): number {
   const [shown, setShown] = useState(reducedMotion() ? value : 0);
 
   useEffect(() => {
-    if (reducedMotion()) {
+    if (reducedMotion() || value <= 0) {
       setShown(value);
       return;
     }
-    if (value <= 0) {
-      setShown(value);
-      return;
-    }
+    const factor = Math.pow(10, decimals);
     let frame = 0;
     let done = false;
     const start = performance.now();
     const tick = (now: number) => {
       const progress = Math.min(1, (now - start) / duration);
       // easeOutCubic — fast first, gentle landing
-      setShown(Math.round(value * (1 - Math.pow(1 - progress, 3))));
+      setShown(Math.round(value * (1 - Math.pow(1 - progress, 3)) * factor) / factor);
       if (progress < 1) frame = requestAnimationFrame(tick);
       else done = true;
     };
@@ -93,7 +90,13 @@ export function useCountUp(value: number, duration = 1100): number {
       cancelAnimationFrame(frame);
       window.clearTimeout(fallback);
     };
-  }, [value, duration]);
+  }, [value, duration, decimals]);
 
   return shown;
+}
+
+/** Inline animated number. */
+export function CountUp({ value, decimals = 0 }: { value: number; decimals?: number }) {
+  const shown = useCountUp(value, 1100, decimals);
+  return <>{shown.toFixed(decimals)}</>;
 }

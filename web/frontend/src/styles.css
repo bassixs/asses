@@ -767,6 +767,25 @@ table.levels td.lvl {
   stroke-width: 12;
   stroke-linecap: round;
   filter: drop-shadow(0 0 6px rgba(198, 242, 78, 0.6));
+  /* pathLength=1 on the element → рисуем дугу одним прогоном стежка */
+  stroke-dasharray: 1;
+  animation: gauge-draw 1.2s ease-out;
+}
+@keyframes gauge-draw {
+  from {
+    stroke-dashoffset: 1;
+  }
+}
+
+.bandseg {
+  animation: band-grow 0.55s ease-out backwards;
+  transform-origin: left;
+}
+@keyframes band-grow {
+  from {
+    transform: scaleX(0);
+    opacity: 0.3;
+  }
 }
 .gauge-num {
   fill: var(--ink);
@@ -1913,10 +1932,15 @@ button.danger:hover:not(:disabled) {
 .no-anim .center-grid > *,
 .no-anim .cards-grid > *,
 .no-anim .center-rows > *,
+.no-anim .bandseg,
 .no-anim .reveal {
   animation: none !important;
   opacity: 1 !important;
   transform: none !important;
+}
+.no-anim .gauge-fill {
+  animation: none !important;
+  stroke-dashoffset: 0 !important;
 }
 
 /* Карточки центров и строки списков подхватываются по очереди */
@@ -2484,8 +2508,13 @@ button.danger:hover:not(:disabled) {
   .container > *,
   .center-grid > *,
   .cards-grid > *,
-  .center-rows > * {
+  .center-rows > *,
+  .bandseg,
+  .gauge-fill {
     animation: none !important;
+  }
+  .gauge-fill {
+    stroke-dashoffset: 0 !important;
   }
   .pl-line,
   .pl-ind {
