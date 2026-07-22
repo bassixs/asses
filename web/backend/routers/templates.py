@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import asyncio
 import logging
 from datetime import datetime, timezone
 from pathlib import Path
@@ -161,7 +162,7 @@ async def upload_material(
         raise HTTPException(status_code=400, detail="Нужен файл PDF, DOCX, TXT или MD.")
     path = await _save_upload(file, "material")
     try:
-        text = extract_instruction_text(path)
+        text = await asyncio.to_thread(extract_instruction_text, path)
     except InstructionExtractionError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
 
@@ -226,7 +227,9 @@ async def delete_material(
     parts: list[tuple[str, str]] = []
     for item in remaining:
         try:
-            parts.append((item.file_name, extract_instruction_text(Path(item.file_path))))
+            parts.append(
+                (item.file_name, await asyncio.to_thread(extract_instruction_text, Path(item.file_path)))
+            )
         except (InstructionExtractionError, OSError):
             # File gone or unreadable — keep going rather than lose every other material.
             logger.warning("Could not re-read material %s while rebuilding", item.file_path)
@@ -249,7 +252,7 @@ async def upload_notebook(
         raise HTTPException(status_code=400, detail="Нужен блокнот в формате .xlsx.")
     path = await _save_upload(file, "template_notebook")
     try:
-        indicators = extract_notebook_indicators(path)
+        indicators = await asyncio.to_thread(extract_notebook_indicators, path)
     except NotebookProcessingError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
 
@@ -278,7 +281,7 @@ async def check_understanding(
         )
 
     try:
-        indicators = extract_notebook_indicators(Path(template.notebook_path))
+        indicators = await asyncio.to_thread(extract_notebook_indicators, Path(template.notebook_path))
     except NotebookProcessingError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
 

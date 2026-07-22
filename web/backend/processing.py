@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import asyncio
 import json
 import logging
 from datetime import datetime
@@ -132,7 +133,9 @@ async def process_audio_exercise(session: AsyncSession, exercise_id: int) -> Non
 
     # 2) notebook analysis → fill → result_json
     input_path = Path(notebook.file_path)
-    indicators = extract_notebook_indicators(input_path)
+    # openpyxl work is synchronous CPU/IO — run it off the event loop so other users'
+    # requests are not frozen while the notebook is read and filled.
+    indicators = await asyncio.to_thread(extract_notebook_indicators, input_path)
     report = await analyze_notebook_indicators(
         transcript=record.transcript,
         indicators=indicators,
@@ -143,7 +146,8 @@ async def process_audio_exercise(session: AsyncSession, exercise_id: int) -> Non
     attach_evidence_timestamps(report, _load_segments(record.transcript_segments))
 
     output_path = REPORTS_DIR / f"exercise_{exercise_id}_filled.xlsx"
-    result_json = fill_observer_notebook(
+    result_json = await asyncio.to_thread(
+        fill_observer_notebook,
         input_path=input_path, output_path=output_path, indicators=indicators, report=report
     )
     await _store_fill_result(session, exercise_id, record.id, notebook.id, output_path, result_json)
@@ -154,7 +158,7 @@ async def store_filled_notebook(session: AsyncSession, exercise_id: int, noteboo
     exercise = await session.get(Exercise, exercise_id)
     if exercise is None:
         raise ValueError("Упражнение не найдено")
-    result_json = read_filled_notebook(notebook_path)
+    result_json = await asyncio.to_thread(read_filled_notebook, notebook_path)
 
     notebook = ObserverNotebook(
         chat_id=WEB_OWNER_ID,
@@ -299,7 +303,8 @@ async def build_ipr_file(session: AsyncSession, participant: Participant) -> Pat
     center = await session.get(AssessmentCenter, participant.center_id)
     REPORTS_DIR.mkdir(parents=True, exist_ok=True)
     output_path = REPORTS_DIR / f"participant_{participant.id}_ipr.docx"
-    save_development_plan_docx(
+    await asyncio.to_thread(
+        save_development_plan_docx,
         path=output_path,
         participant_name=participant.full_name,
         center_name=center.name if center else None,

@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import asyncio
 import logging
 from pathlib import Path
 
@@ -105,7 +106,8 @@ async def download_report(
     )
     if report is None:
         raise HTTPException(status_code=400, detail="Сначала сформируйте отчёт (POST /report).")
-    path = render_report_file(participant_id, fmt, report.result_json)
+    # DOCX/PPTX rendering is synchronous CPU work — off the loop so it doesn't freeze others.
+    path = await asyncio.to_thread(render_report_file, participant_id, fmt, report.result_json)
     mime = _DOCX_MIME if fmt == "docx" else _PPTX_MIME
     return FileResponse(path, media_type=mime, filename=path.name)
 

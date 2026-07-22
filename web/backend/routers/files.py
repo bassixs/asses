@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import asyncio
 import logging
 from pathlib import Path
 from uuid import uuid4
@@ -69,7 +70,7 @@ async def upload_notebook_template(
         raise HTTPException(status_code=400, detail="Нужен блокнот в формате .xlsx.")
     path = await _save_upload(file, "notebook")
     try:
-        indicators = extract_notebook_indicators(path)
+        indicators = await asyncio.to_thread(extract_notebook_indicators, path)
     except NotebookProcessingError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
     notebook = ObserverNotebook(
