@@ -126,6 +126,13 @@
 - **Запуск сайта (сейчас):** uvicorn `0.0.0.0:8000` через `nohup`, лог `/var/log/asses-web.log`.
 - **БД:** `/opt/asses/data/app.db` (общая), миграции применены. Загрузки — `/opt/asses/data/uploads`,
   результаты — `/opt/asses/data/reports`.
+- **Конкурентность (2026-07-21):** SQLite в режиме **WAL** (чтение и запись не блокируют друг друга),
+  `busy_timeout=5000`, `synchronous=NORMAL` — ставятся connect-listener'ом в `bot/database.py`.
+  Тяжёлая синхронная работа (openpyxl-блокнот, генерация DOCX/PPTX/ИПР, парсинг PDF/DOCX) вынесена
+  в поток через `asyncio.to_thread`, чтобы единственный процесс оставался отзывчивым для всех.
+  ⚠️ **Бэкап в WAL:** `cp app.db` может не захватить свежие коммиты из `app.db-wal`. Перед копией
+  сделать `sqlite3 app.db 'PRAGMA wal_checkpoint(TRUNCATE)'` **или** копировать все три файла
+  (`app.db`, `app.db-wal`, `app.db-shm`).
 - **Запуск сайта:** systemd-сервис **`asses-web`** (active + enabled, `Restart=always`,
   обёртка `/opt/run-asses-web.sh`) — переживает падения и ребут.
 - **Доступ к сайту:** **https://hr40.ru** (nginx-реверс-прокси → 127.0.0.1:8000). Вход по аккаунту
