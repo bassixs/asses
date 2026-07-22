@@ -27,6 +27,7 @@ from bot.services.instruction_files import (
 from bot.services.llm_json import LLMJSONError
 from bot.services.observer_notebook import NotebookProcessingError, extract_notebook_indicators
 from web.backend.deps import get_session
+from web.backend.storage import delete_files_now_unreferenced
 
 logger = logging.getLogger(__name__)
 router = APIRouter(tags=["exercise-templates"])
@@ -129,9 +130,14 @@ async def delete_template(template_id: int, session: AsyncSession = Depends(get_
             status_code=400,
             detail="Упражнение уже использовалось в оценке — удалить нельзя.",
         )
+    # Its own files (notebook + materials) can go once the rows are gone; the reference
+    # check keeps anything still shared.
+    files = [template.notebook_path] if template.notebook_path else []
+    files += [m.file_path for m in template.materials if m.file_path]
     await session.delete(template)
     await session.commit()
-    return {"ok": True}
+    removed = await delete_files_now_unreferenced(session, files)
+    return {"ok": True, "files_deleted": removed["deleted"]}
 
 
 async def _save_upload(upload: UploadFile, prefix: str) -> Path:

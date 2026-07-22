@@ -17,6 +17,7 @@ from bot.models import (
 from bot.services.exercise_understanding import render_understanding_brief
 from web.backend.deps import WEB_OWNER_ID, CurrentUser, current_user, get_session
 from web.backend.purge import delete_center, delete_exercises, delete_participants
+from web.backend.storage import delete_files_now_unreferenced
 from web.backend.schemas import (
     CenterCreate,
     CenterOut,
@@ -134,14 +135,20 @@ async def get_center(center_id: int, session: AsyncSession = Depends(get_session
     return CenterOut(id=center.id, name=center.name, created_at=center.created_at)
 
 
+async def _finish_delete(session: AsyncSession, stats: dict) -> dict:
+    """Commit the row deletion, then remove the freed-up files from disk."""
+    files = stats.pop("files", [])
+    await session.commit()
+    removed = await delete_files_now_unreferenced(session, files)
+    return {"ok": True, **stats, "files_deleted": removed["deleted"]}
+
+
 @router.delete("/centers/{center_id}")
 async def remove_center(center_id: int, session: AsyncSession = Depends(get_session)) -> dict:
     center = await session.get(AssessmentCenter, center_id)
     if center is None:
         raise HTTPException(status_code=404, detail="Центр не найден")
-    stats = await delete_center(session, center_id)
-    await session.commit()
-    return {"ok": True, **stats}
+    return await _finish_delete(session, await delete_center(session, center_id))
 
 
 @router.delete("/participants/{participant_id}")
@@ -151,9 +158,7 @@ async def remove_participant(
     participant = await session.get(Participant, participant_id)
     if participant is None:
         raise HTTPException(status_code=404, detail="Участник не найден")
-    stats = await delete_participants(session, [participant_id])
-    await session.commit()
-    return {"ok": True, **stats}
+    return await _finish_delete(session, await delete_participants(session, [participant_id]))
 
 
 @router.delete("/exercises/{exercise_id}")
@@ -161,9 +166,7 @@ async def remove_exercise(exercise_id: int, session: AsyncSession = Depends(get_
     exercise = await session.get(Exercise, exercise_id)
     if exercise is None:
         raise HTTPException(status_code=404, detail="Упражнение не найдено")
-    stats = await delete_exercises(session, [exercise_id])
-    await session.commit()
-    return {"ok": True, **stats}
+    return await _finish_delete(session, await delete_exercises(session, [exercise_id]))
 
 
 # ---- participants --------------------------------------------------------------------------

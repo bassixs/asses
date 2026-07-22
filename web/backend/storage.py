@@ -103,6 +103,39 @@ async def scan_orphans(session: AsyncSession) -> dict:
     }
 
 
+async def delete_files_now_unreferenced(session: AsyncSession, paths: list[str]) -> dict:
+    """Delete the given files, but only those nothing in the DB points at any more.
+
+    Called right after an entity (centre/participant/exercise) is deleted, so its audio,
+    filled notebooks and reports leave the disk immediately. The reference check makes it
+    safe to pass a shared file (e.g. a catalog template's notebook): if another row still
+    uses it, it is kept. Only files inside the managed dirs are ever touched.
+    """
+    if not paths:
+        return {"deleted": 0, "freed": 0}
+
+    referenced = await _referenced_paths(session)
+    allowed = {d.resolve() for d in _managed_dirs()}
+
+    deleted = 0
+    freed = 0
+    for raw in {os.path.abspath(p) for p in paths}:
+        if raw in referenced:
+            continue  # still used by another row — keep it
+        path = Path(raw)
+        try:
+            if path.resolve().parent not in allowed or not path.is_file():
+                continue
+            size = path.stat().st_size
+            path.unlink()
+        except OSError:
+            logger.warning("Could not delete file %s", path)
+            continue
+        deleted += 1
+        freed += size
+    return {"deleted": deleted, "freed": freed}
+
+
 async def delete_orphans(session: AsyncSession) -> dict:
     """Delete exactly the files a fresh scan reports as orphaned."""
     scan = await scan_orphans(session)
