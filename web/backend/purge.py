@@ -3,6 +3,7 @@ from __future__ import annotations
 from sqlalchemy import delete, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from bot.config import settings
 from bot.models import (
     AssessmentCenter,
     AssessmentResult,
@@ -19,6 +20,18 @@ from bot.models import (
 # Deletion is done with explicit statements in dependency order rather than relying on
 # ORM cascades or ON DELETE clauses: SQLite does not enforce foreign keys by default,
 # so a cascade would silently leave orphaned rows behind.
+
+# Rendered report files (DOCX/PPTX) are cache with a deterministic name and are NOT tracked
+# in the DB (they rebuild from result_json on demand). Reconstruct their paths on delete so
+# they leave the disk too, instead of lingering until the storage cleanup sweeps them.
+_REPORTS_DIR = settings.download_dir.parent / "reports"
+
+
+def _report_files(participant_id: int) -> list[str]:
+    return [
+        str(_REPORTS_DIR / f"participant_{participant_id}_report.docx"),
+        str(_REPORTS_DIR / f"participant_{participant_id}_report.pptx"),
+    ]
 
 
 async def _paths(session: AsyncSession, column, where) -> list[str]:
@@ -90,6 +103,8 @@ async def delete_participants(session: AsyncSession, participant_ids: list[int])
         await _paths(session, ParticipantReport.output_path, ParticipantReport.participant_id.in_(participant_ids))
         + await _paths(session, DevelopmentPlan.output_path, DevelopmentPlan.participant_id.in_(participant_ids))
     )
+    for pid in participant_ids:
+        files += _report_files(pid)
 
     await session.execute(
         delete(ParticipantReport).where(ParticipantReport.participant_id.in_(participant_ids))
