@@ -3,6 +3,7 @@ import { Link, useParams } from "react-router-dom";
 import { api } from "../api";
 import { FileDrop } from "../components/FileDrop";
 import { CountUp } from "../components/Reveal";
+import { Waveform } from "../components/Waveform";
 import type { Exercise, ExerciseStatus } from "../types";
 
 type Method = "" | "audio" | "filled";
@@ -19,7 +20,7 @@ function Processing() {
   }, []);
   return (
     <div className="processing">
-      <span className="proc-spinner" aria-hidden="true" />
+      <Waveform bars={28} className="wf-proc" />
       <div className="proc-body">
         <b>Идёт обработка…</b>
         <span className="proc-stage">{STAGES[i]}</span>

@@ -1,5 +1,6 @@
 import { useState } from "react";
 import { api } from "../api";
+import { Waveform } from "../components/Waveform";
 
 export default function Login({ onSuccess }: { onSuccess: () => void }) {
   const [username, setUsername] = useState("");
@@ -35,6 +36,8 @@ export default function Login({ onSuccess }: { onSuccess: () => void }) {
         <p className="muted">
           Оценка компетенций на ИИ. Доступ только для сотрудников HR.
         </p>
+
+        <Waveform bars={40} className="wf-login" />
 
         <label className="login-field">
           <span>Логин</span>

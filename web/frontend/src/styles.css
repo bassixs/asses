@@ -1147,6 +1147,90 @@ select option {
   flex-wrap: wrap;
 }
 
+/* ---- звуковая волна (фирменная анимация) ---- */
+.wf {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 3px;
+  height: 60px;
+}
+.wf span {
+  flex: 1 1 0;
+  min-width: 2px;
+  max-width: 6px;
+  border-radius: 999px;
+  background: linear-gradient(180deg, var(--accent), var(--accent-2));
+  transform-origin: center;
+  opacity: 0.9;
+  animation-name: wf-pulse;
+  animation-iteration-count: infinite;
+  animation-timing-function: ease-in-out;
+  animation-direction: alternate;
+}
+@keyframes wf-pulse {
+  from {
+    transform: scaleY(0.28);
+    opacity: 0.55;
+  }
+  to {
+    transform: scaleY(1);
+    opacity: 1;
+  }
+}
+.wf-login {
+  height: 56px;
+  margin: 22px 0 6px;
+  filter: drop-shadow(0 0 14px rgba(198, 242, 78, 0.35));
+}
+.wf-proc {
+  height: 34px;
+  width: 116px;
+  flex: none;
+  gap: 2px;
+}
+
+/* ---- «блик» по главным кнопкам при наведении ---- */
+.btn,
+.login-submit,
+button:not(.ghost):not(.danger):not(.danger-link):not(.faq-q):not(.method-card) {
+  position: relative;
+  overflow: hidden;
+}
+.btn::after,
+.login-submit::after,
+button:not(.ghost):not(.danger):not(.danger-link):not(.faq-q):not(.method-card)::after {
+  content: "";
+  position: absolute;
+  top: 0;
+  left: -60%;
+  width: 40%;
+  height: 100%;
+  background: linear-gradient(
+    100deg,
+    transparent,
+    rgba(255, 255, 255, 0.45),
+    transparent
+  );
+  transform: skewX(-18deg);
+  opacity: 0;
+  pointer-events: none;
+}
+.btn:hover::after,
+.login-submit:hover::after,
+button:not(.ghost):not(.danger):not(.danger-link):not(.faq-q):not(.method-card):hover::after {
+  opacity: 1;
+  animation: shine 0.7s ease-out;
+}
+@keyframes shine {
+  from {
+    left: -60%;
+  }
+  to {
+    left: 130%;
+  }
+}
+
 /* ---- индикатор обработки ---- */
 .processing {
   display: flex;
@@ -2510,11 +2594,17 @@ button.danger:hover:not(:disabled) {
   .cards-grid > *,
   .center-rows > *,
   .bandseg,
-  .gauge-fill {
+  .gauge-fill,
+  .wf span {
     animation: none !important;
   }
   .gauge-fill {
     stroke-dashoffset: 0 !important;
+  }
+  .btn::after,
+  .login-submit::after,
+  button::after {
+    display: none !important;
   }
   .pl-line,
   .pl-ind {
