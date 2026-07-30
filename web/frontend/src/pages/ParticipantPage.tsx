@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { Link, useParams } from "react-router-dom";
 import { api } from "../api";
 import { ConfirmDelete } from "../components/ConfirmDelete";
+import { Select } from "../components/Select";
 import type { Exercise, ExerciseTemplate, Participant } from "../types";
 
 export default function ParticipantPage() {
@@ -93,14 +94,14 @@ export default function ParticipantPage() {
           подтянутся автоматически.
         </p>
         <div className="row" style={{ marginTop: 10 }}>
-          <select value={templateId} onChange={(e) => setTemplateId(e.target.value)}>
-            <option value="">— выберите упражнение —</option>
-            {templates.map((t) => (
-              <option key={t.id} value={t.id}>
-                {t.name}
-              </option>
-            ))}
-          </select>
+          <Select
+            value={templateId}
+            placeholder="— выберите упражнение —"
+            emptyText="нет готовых упражнений"
+            disabled={busy}
+            onChange={setTemplateId}
+            options={templates.map((t) => ({ value: String(t.id), label: t.name }))}
+          />
           <button onClick={add} disabled={busy || !templateId}>
             Добавить
           </button>

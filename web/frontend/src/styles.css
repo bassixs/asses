@@ -1080,6 +1080,119 @@ select option {
   color: var(--ink);
 }
 
+/* ---- кастомный выпадающий список (в тему) ---- */
+.sel {
+  position: relative;
+  flex: 1;
+  min-width: 220px;
+}
+.sel-trigger {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 12px 15px;
+  border: 1px solid var(--line-soft);
+  border-radius: 12px;
+  background: rgba(0, 0, 0, 0.35);
+  color: var(--ink);
+  font-size: 14px;
+  font-weight: 500;
+  font-family: inherit;
+  text-align: left;
+  cursor: pointer;
+  transition:
+    border-color 0.15s ease,
+    box-shadow 0.15s ease,
+    background 0.15s ease;
+}
+.sel-trigger:hover:not(:disabled) {
+  border-color: var(--line);
+  transform: none;
+  box-shadow: none;
+}
+.sel.open .sel-trigger {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 3px rgba(198, 242, 78, 0.14);
+}
+.sel.off {
+  opacity: 0.55;
+}
+.sel-ph {
+  color: #5f6a58;
+}
+.sel-chev {
+  flex: none;
+  width: 9px;
+  height: 9px;
+  border-right: 2px solid var(--muted);
+  border-bottom: 2px solid var(--muted);
+  transform: rotate(45deg) translate(-1px, -1px);
+  transition:
+    transform 0.2s ease,
+    border-color 0.15s ease;
+}
+.sel.open .sel-chev {
+  transform: rotate(-135deg) translate(-2px, -2px);
+  border-color: var(--accent);
+}
+.sel-menu {
+  position: absolute;
+  z-index: 40;
+  top: calc(100% + 6px);
+  left: 0;
+  right: 0;
+  margin: 0;
+  padding: 6px;
+  list-style: none;
+  max-height: 280px;
+  overflow-y: auto;
+  background: var(--panel-solid);
+  border: 1px solid var(--line);
+  border-radius: 14px;
+  box-shadow: 0 20px 50px -20px rgba(0, 0, 0, 0.9);
+  animation: sel-in 0.16s ease-out;
+}
+@keyframes sel-in {
+  from {
+    opacity: 0;
+    transform: translateY(-6px);
+  }
+}
+.sel-opt {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 11px 13px;
+  border-radius: 10px;
+  font-size: 14px;
+  color: var(--ink);
+  cursor: pointer;
+  transition:
+    background 0.12s ease,
+    color 0.12s ease;
+}
+.sel-opt.hi {
+  background: rgba(198, 242, 78, 0.1);
+  color: var(--accent);
+}
+.sel-opt.on {
+  color: var(--accent);
+  font-weight: 700;
+}
+.sel-check {
+  flex: none;
+  font-weight: 800;
+  color: var(--accent);
+}
+.sel-empty {
+  padding: 12px 13px;
+  color: var(--muted);
+  font-size: 13.5px;
+}
+
 .badge {
   display: inline-flex;
   align-items: center;
