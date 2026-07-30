@@ -67,6 +67,9 @@ export default function ParticipantPage() {
     setMsg("");
     try {
       await api.buildReport(pid);
+      // Обновляем участника, иначе флаг has_report остаётся старым и кнопки скачивания
+      // не включаются до перезахода на страницу.
+      await load();
       setMsg("Отчёт сформирован — можно скачать DOCX/PPTX и ИПР.");
     } catch (e: any) {
       setError(e.message);

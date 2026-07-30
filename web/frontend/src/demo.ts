@@ -50,7 +50,7 @@ const centers: Center[] = [
   },
 ];
 const participants: Participant[] = [
-  { id: 1, code: "AC-001", center_id: 1, has_report: true, processed_count: 1 },
+  { id: 1, code: "AC-001", center_id: 1, has_report: false, processed_count: 1 },
   { id: 2, code: "№2", center_id: 1, has_report: false, processed_count: 0 },
 ];
 const exercises: Exercise[] = [
@@ -535,8 +535,10 @@ export const demoApi = {
     throw new Error("Демо-режим: скачивание файлов недоступно — это витрина интерфейса без бэкенда.");
   },
 
-  async buildReport(_participantId: number) {
+  async buildReport(participantId: number) {
     await sleep(1500);
+    const p = participants.find((x) => x.id === participantId);
+    if (p) p.has_report = true; // как на бэкенде: после сборки отчёт появляется
     return {
       ok: true,
       competencies: Object.fromEntries(Object.entries(doneLevels).map(([k, v]) => [k, { avg_level: v.level }])),
