@@ -266,6 +266,14 @@ export default function ExercisePage() {
                 <button onClick={() => api.downloadFilledNotebook(exId).catch((e: any) => setError(e.message))}>
                   Скачать заполненный блокнот
                 </button>
+                {status.source === "audio" && (
+                  <button
+                    className="ghost"
+                    onClick={() => api.downloadTranscript(exId).catch((e: any) => setError(e.message))}
+                  >
+                    Скачать расшифровку
+                  </button>
+                )}
               </div>
               <p className="muted" style={{ marginTop: 12 }}>
                 Отчёт участника и ИПР собираются не по одному упражнению, а по всем сразу —

@@ -167,6 +167,7 @@ const realApi = {
 
   exerciseStatus: (id: number) => req<ExerciseStatus>(`/exercises/${id}/status`),
   downloadFilledNotebook: (id: number) => downloadFile(`/exercises/${id}/filled-notebook`),
+  downloadTranscript: (id: number) => downloadFile(`/exercises/${id}/transcript`),
 
   buildReport: (participantId: number) =>
     jsonPost<{ ok: boolean; competencies: Record<string, { avg_level: number }> }>(

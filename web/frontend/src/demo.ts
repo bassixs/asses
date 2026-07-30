@@ -534,6 +534,9 @@ export const demoApi = {
   async downloadFilledNotebook(_id: number): Promise<void> {
     throw new Error("Демо-режим: скачивание файлов недоступно — это витрина интерфейса без бэкенда.");
   },
+  async downloadTranscript(_id: number): Promise<void> {
+    throw new Error("Демо-режим: скачивание файлов недоступно — это витрина интерфейса без бэкенда.");
+  },
 
   async buildReport(participantId: number) {
     await sleep(1500);

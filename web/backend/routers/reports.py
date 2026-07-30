@@ -5,11 +5,11 @@ import logging
 from pathlib import Path
 
 from fastapi import APIRouter, Depends, HTTPException, Query
-from fastapi.responses import FileResponse
+from fastapi.responses import FileResponse, Response
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from bot.models import Exercise, NotebookFillResult, Participant
+from bot.models import Exercise, InterviewRecord, NotebookFillResult, Participant
 from web.backend import jobs
 from web.backend.deps import get_session
 from web.backend.processing import build_ipr_file, build_participant_report, render_report_file
@@ -59,6 +59,26 @@ async def exercise_status(exercise_id: int, session: AsyncSession = Depends(get_
         "counts": counts if fill else None,
         "summary": data.get("participant_summary") or None,
     }
+
+
+@router.get("/exercises/{exercise_id}/transcript")
+async def download_transcript(exercise_id: int, session: AsyncSession = Depends(get_session)) -> Response:
+    """The role-labeled transcript (ведущий/участник) produced from the audio, as a .txt."""
+    record = await session.scalar(
+        select(InterviewRecord)
+        .where(InterviewRecord.exercise_id == exercise_id)
+        .order_by(InterviewRecord.id.desc())
+    )
+    if record is None or not (record.transcript or "").strip():
+        raise HTTPException(
+            status_code=404,
+            detail="Расшифровка недоступна — упражнение оценивалось не по аудиозаписи.",
+        )
+    return Response(
+        content=record.transcript,
+        media_type="text/plain; charset=utf-8",
+        headers={"Content-Disposition": f'attachment; filename="transcript_{exercise_id}.txt"'},
+    )
 
 
 @router.get("/exercises/{exercise_id}/filled-notebook")
