@@ -44,6 +44,10 @@ export default function ExercisePage() {
   const [status, setStatus] = useState<ExerciseStatus | null>(null);
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
+  // Файл сначала выбирается, а запускается отдельной кнопкой — чтобы старт
+  // тяжёлой обработки был явным действием, а не сюрпризом при перетаскивании.
+  const [pendingAudio, setPendingAudio] = useState<File | null>(null);
+  const [pendingFilled, setPendingFilled] = useState<File | null>(null);
   const pollRef = useRef<number | null>(null);
 
   const loadStatus = async () => {
@@ -99,6 +103,7 @@ export default function ExercisePage() {
     f &&
     wrap(async () => {
       await api.uploadAudio(exId, f);
+      setPendingAudio(null); // защита от повторного запуска той же записи
       setStatus({ stage: "processing", message: "Расшифровка и анализ…", has_result: false, levels: {}, indicator_count: null });
       startPoll();
     });
@@ -107,6 +112,7 @@ export default function ExercisePage() {
     f &&
     wrap(async () => {
       await api.uploadFilledNotebook(exId, f);
+      setPendingFilled(null);
       await loadStatus();
     });
 
@@ -182,8 +188,18 @@ export default function ExercisePage() {
               disabled={busy}
               title="Перетащите аудио или нажмите"
               hint="mp3, m4a, ogg, wav — длинные записи разобьются сами"
-              onFiles={(files) => onAudio(files[0])}
+              onFiles={(files) => setPendingAudio(files[0])}
             />
+            <div className="start-row">
+              <button
+                className="start-btn"
+                disabled={busy || !pendingAudio}
+                onClick={() => pendingAudio && onAudio(pendingAudio)}
+              >
+                {busy ? "Загружаю…" : "Запустить обработку"}
+              </button>
+              {!pendingAudio && <span className="muted">Сначала выберите файл записи.</span>}
+            </div>
           </div>
         )}
 
@@ -196,8 +212,18 @@ export default function ExercisePage() {
               disabled={busy}
               title="Перетащите блокнот или нажмите"
               hint="Файл .xlsx с проставленными статусами и уровнями"
-              onFiles={(files) => onFilled(files[0])}
+              onFiles={(files) => setPendingFilled(files[0])}
             />
+            <div className="start-row">
+              <button
+                className="start-btn"
+                disabled={busy || !pendingFilled}
+                onClick={() => pendingFilled && onFilled(pendingFilled)}
+              >
+                {busy ? "Читаю блокнот…" : "Загрузить и прочитать"}
+              </button>
+              {!pendingFilled && <span className="muted">Сначала выберите файл блокнота.</span>}
+            </div>
           </div>
         )}
 

@@ -1431,6 +1431,28 @@ button:not(.ghost):not(.danger):not(.danger-link):not(.faq-q):not(.method-card):
   }
 }
 
+/* ---- кнопка запуска обработки ---- */
+.start-row {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  flex-wrap: wrap;
+  margin-top: 14px;
+}
+.start-btn {
+  padding: 13px 26px;
+  font-size: 15px;
+  border-radius: 13px;
+}
+.start-btn:not(:disabled) {
+  box-shadow: 0 0 24px -8px rgba(198, 242, 78, 0.55);
+}
+@media (max-width: 720px) {
+  .start-btn {
+    width: 100%;
+  }
+}
+
 /* ---- большая волна на время расшифровки (как на главной) ---- */
 .processing-hero {
   display: flex;
