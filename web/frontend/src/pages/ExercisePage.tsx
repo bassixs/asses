@@ -19,9 +19,11 @@ function Processing() {
     return () => window.clearInterval(t);
   }, []);
   return (
-    <div className="processing">
-      <Waveform bars={28} className="wf-proc" />
-      <div className="proc-body">
+    <div className="processing-hero">
+      <div className="proc-wavebox">
+        <Waveform bars={40} className="wf-big" />
+      </div>
+      <div className="proc-under">
         <b>Идёт обработка…</b>
         <span className="proc-stage">{STAGES[i]}</span>
         <div className="proc-dots" aria-hidden="true">

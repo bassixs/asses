@@ -1431,6 +1431,54 @@ button:not(.ghost):not(.danger):not(.danger-link):not(.faq-q):not(.method-card):
   }
 }
 
+/* ---- большая волна на время расшифровки (как на главной) ---- */
+.processing-hero {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 16px;
+  padding: 6px 0 4px;
+}
+.proc-wavebox {
+  width: 100%;
+  max-width: 460px;
+  padding: 26px 22px;
+  border: 1px solid var(--line-soft);
+  border-radius: 18px;
+  background: rgba(198, 242, 78, 0.04);
+  box-shadow: inset 0 0 40px -18px rgba(198, 242, 78, 0.25);
+  animation: warmglow 2.8s ease-in-out infinite;
+}
+@keyframes warmglow {
+  0%,
+  100% {
+    box-shadow: inset 0 0 40px -18px rgba(198, 242, 78, 0.2);
+  }
+  50% {
+    box-shadow:
+      inset 0 0 46px -16px rgba(198, 242, 78, 0.35),
+      0 0 30px -10px rgba(198, 242, 78, 0.3);
+  }
+}
+.wf-big {
+  height: 96px;
+  gap: 4px;
+  filter: drop-shadow(0 0 10px rgba(198, 242, 78, 0.45));
+}
+.wf-big span {
+  max-width: 7px;
+}
+.proc-under {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 5px;
+  text-align: center;
+}
+.proc-under b {
+  font-size: 15.5px;
+}
+
 /* ---- индикатор обработки ---- */
 .processing {
   display: flex;
@@ -2797,7 +2845,8 @@ button.danger:hover:not(:disabled) {
   .gauge-fill,
   .wf span,
   .warn-note,
-  .warn-pulse::after {
+  .warn-pulse::after,
+  .proc-wavebox {
     animation: none !important;
   }
   .gauge-fill {
