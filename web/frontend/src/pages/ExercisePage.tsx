@@ -56,7 +56,17 @@ export default function ExercisePage() {
 
   useEffect(() => {
     api.getExercise(exId).then(setEx).catch((e: any) => setError(e.message));
-    loadStatus();
+    // Если на страницу вернулись, пока сервер ещё обрабатывает, возобновляем опрос —
+    // иначе «Идёт обработка…» зависает навсегда, хотя результат давно готов.
+    (async () => {
+      try {
+        const s = await api.exerciseStatus(exId);
+        setStatus(s);
+        if (s.stage === "processing") startPoll();
+      } catch {
+        /* ignore */
+      }
+    })();
     return () => {
       if (pollRef.current) window.clearInterval(pollRef.current);
     };
